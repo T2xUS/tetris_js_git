@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ECE466 3D Tetris</title>
+    <h2>ECE466 Computer Graphics - Professor Sable</h2>
+    <h3>3D Tetris - Jeffrey Shih</h3>
+</head>
+
+<script id="vertex-shader" type="x-shader/x-vertex">
+
+attribute vec4 vPosition;
+attribute vec4 vColor;
+varying vec4 fColor;
+uniform mat4 worldViewMatrix;
+uniform mat4 modelViewMatrix;
+uniform mat4 projectionMatrix;
+
+void main()
+{
+    fColor = vColor;
+    gl_Position = projectionMatrix * modelViewMatrix * worldViewMatrix * vPosition;
+}
+</script>
+
+<script id="fragment-shader" type="x-shader/x-fragment">
+
+precision mediump float;
+
+varying vec4 fColor;
+
+void
+main()
+{
+    gl_FragColor = fColor;
+}
+</script>
+
+<script type="text/javascript" src="./webgl-utils.js"></script>
+<script type="text/javascript" src="./initShaders.js"></script>
+<script type="text/javascript" src="./MV.js"></script>
+<script type="text/javascript" src="./tetris_JS_5_debug.js"></script>
+
+<body>
+<canvas id="gl-canvas" width="512"" height="512">
+Oops ... your browser doesn't support the HTML5 canvas element
+</canvas>
+
+<br/>
+
+<div id="scoreboard" style="width: 450px;position: absolute;top:110px; left: 550px;font-size: 25px;">
+</div>
+
+<div id="gameOver" style="width: 450px;position: absolute;top:140px; left: 550px;font-size: 25px;">
+</div>
+
+<div style="width: 800px;position: absolute;top:200px; left: 550px">
+<p>Controls:</p>
+<table id="controls" style="text-align: center">
+    <tr>
+        <td>Moving:</td>
+        <td>Key:</td>
+        <td>Rotating:</td>
+        <td>Key:</td>
+    </tr>
+    <tr>
+        <td>Up</td>
+        <td>&uarr;</td>
+        <td>Y-axis CW</td>
+        <td>SHIFT + &uarr;</td>
+    </tr>
+    <tr>
+        <td>Down</td>
+        <td>&darr;</td>
+        <td>Y-axis CCW</td>
+        <td>SHIFT + &darr;</td>
+    </tr>
+    <tr>
+        <td>Left</td>
+        <td>&larr;</td>
+        <td>X-axis CW</td>
+        <td>SHIFT + &larr;</td>
+    </tr>
+    <tr>
+        <td>Right</td>
+        <td>&rarr;</td>
+        <td>X-axis CCW</td>
+        <td>SHIFT + &rarr;</td>
+    </tr>
+    <tr>
+        <td>Front</td>
+        <td>Z</td>
+        <td>Z-axis CW</td>
+        <td>SHIFT + Z</td>
+    </tr>
+    <tr>
+        <td>Back</td>
+        <td>X</td>
+        <td>Z-axis CCW</td>
+        <td>SHIFT + X</td>
+    </tr>
+</table>
+</div>
+
+<br/>
+<br/>
+
+</body>
+</html>
