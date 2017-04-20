@@ -3,6 +3,30 @@
 // Improve speed in general (LOADED VERTEX BUFFERS ONLY ONCE)
 // Deal with game over condition (DONE)
 // Differentiate spawn spot from game spot (DONE)
+// DISONTINUiTY ASK XL
+// Score jump skipping levels?
+
+/*
+Yesterday's progress:
+- Loaded vertexes only in once
+- Implemented game over state when cube reaches the top and some bugs regarding that
+- Added a lot of buttons for starting, pausing, resetting, and ending the game
+- Added slider to customize grid size
+- Added slider to choose starting level
+- Made sure sliders can't be set during gameplay, and certain buttons are activated at certain time
+- Implemented hard drops with space
+- Implemented gravity so that block falls automatically, made sure this is deactivated when the game isn't active
+- Each level has a different falling speed
+- Level is proportional to score
+- Display messages for game over, victory, game end, and block clears from singles to tetrises
+
+To do:
+- Fix the periodic freezing bug (probably impossible)
+- Fix the discontinuity with rotating the camera eye (ask Xiangling)
+- Other potential speed improvements (how to load grid only once?)
+- Add texture and lighting (optional for now)
+- Make cubes EXPLODE when cleared, making add a special animation for dropping cubes as well
+*/
 
 "use strict"
 
@@ -1462,7 +1486,7 @@ window.onload = function init()
     document.getElementById('startButton').disabled = false;
     document.getElementById('pauseButton').disabled = true;
     document.getElementById('resetButton').disabled = true
-    document.getElementById('resetButton').disabled = true;
+    document.getElementById('endButton').disabled = true;
 
     // Initialize the scoreboard to 0
     updateScoreboard();
