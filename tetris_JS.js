@@ -1,14 +1,33 @@
 // Next steps:
 // Freeze bug, idk why (note: this happened in Rubix too)
-// Improve speed in general
-// Deal with game over condition
-// Differentiate spawn spot from game spot
+// Improve speed in general (LOADED VERTEX BUFFERS ONLY ONCE)
+// Deal with game over condition (DONE)
+// Differentiate spawn spot from game spot (DONE)
 
 "use strict"
 
 var canvas;
 var gl;
 var program;
+
+var DEMO = false;
+
+// -----------------------------
+// Hash table for color vectors
+// -----------------------------
+
+var colorTable = {
+    'cyan'      : vec4( 0.0, 1.0, 1.0, 1.0 ),
+    'yellow'    : vec4( 1.0, 1.0, 0.0, 1.0 ),
+    'magenta'   : vec4( 1.0, 0.0, 1.0, 1.0 ),
+    'blue'      : vec4( 0.0, 0.0, 1.0, 1.0 ),
+    'orange'    : vec4( 1.0, 0.5, 0.0, 1.0 ),
+    'red'       : vec4( 1.0, 0.0, 0.0, 1.0 ),
+    'green'     : vec4( 0.0, 1.0, 0.0, 1.0 ),
+    'black'     : vec4( 0.0, 0.0, 0.0, 1.0 ),
+    'white'     : vec4( 1.0, 1.0, 1.0, 1.0 ),
+    'gray'      : vec4( 0.0, 0.0, 0.0, 0.5 ),
+};
 
 // --------------------------------
 // Variables pertaining to vertices
@@ -26,31 +45,46 @@ var sidelen = 2*vertexPos;
 // Spacing between cubelets
 var spacing = 1.1;
 
-// Vertex buffers used for rendering
-var CubiePoints = [];
-var LinePoints = [];
-var GridPoints = [];
+// Vertex buffer used for rendering
+// 0-36 is cubie
+// 36-60 is cubie outline
+// 60-78 is grid square
+var points = [];
+
+// Color buffer
+//var colors = [];
 
 // --------------------------------
 // Grid boundaries
 // --------------------------------
 
-var grid_size = 1;
-if (grid_size) {
-var grid_Xp = 3;
+// Default 6x14x6
+var grid_Xp = 2;
 var grid_Xn = -3;
 var grid_Yp = 6;
-var grid_Yn = -6;
-var grid_Zp = 3;
+var grid_Yn = -7;
+var grid_Zp = 2;
 var grid_Zn = -3;
-} else {
+
+// Small 4x9x4
+/*
 var grid_Xp = 1;
 var grid_Xn = -2;
 var grid_Yp = 4;
 var grid_Yn = -4;
 var grid_Zp = 1;
 var grid_Zn = -2;
-}
+*/
+
+// Large 7x16x7
+/*
+var grid_Xp = 3;
+var grid_Xn = -3;
+var grid_Yp = 7;
+var grid_Yn = -8;
+var grid_Zp = 3;
+var grid_Zn = -3;
+*/
 
 // --------------------------------
 // Variables pertaining to viewing
@@ -129,33 +163,57 @@ var worldViewMatrixLoc;
 var projectionMatrixLoc;
 var modelViewMatrixLoc;
 
-// -----------------------------
-// Hash table for color vectors
-// -----------------------------
-
-var colorTable = {
-    'cyan'      : vec4( 0.0, 1.0, 1.0, 1.0 ),
-    'yellow'    : vec4( 1.0, 1.0, 0.0, 1.0 ),
-    'magenta'   : vec4( 1.0, 0.0, 1.0, 1.0 ),
-    'blue'      : vec4( 0.0, 0.0, 1.0, 1.0 ),
-    'orange'    : vec4( 1.0, 0.5, 0.0, 1.0 ),
-    'red'       : vec4( 1.0, 0.0, 0.0, 1.0 ),
-    'green'     : vec4( 0.0, 1.0, 0.0, 1.0 ),
-    'black'     : vec4( 0.0, 0.0, 0.0, 1.0 ),
-    'white'     : vec4( 1.0, 1.0, 1.0, 1.0 ),
-    'gray'      : vec4( 0.0, 0.0, 0.0, 0.5 )
-}
-
 // ---------------------------------
 // Game logic
 // ---------------------------------
 
-var score = 0;
+// Game status flags
+var isGameStarted = false;
+var isGameOver = false;
+var isGamePaused = false;
 
-// Make sure you do this after the DOM object is generated (in window.onload)
+// Game score
+var gameScore = 0;
+
+// Game level, affects Tetromino fall interval
+var gameLevel = 1;
+
+// Possible fall intervals based on level
+var fallIntervals = [
+    2000, // placeholder
+    2000, // 1
+    1500, // 2
+    1200, // 3
+    1000, // 4
+    800, // 5
+    600, // 6
+    400, // 7
+    200, // 8
+    100, // 9
+    50 // 10
+];
+
+// Millieconds taken by Tetromino to fall 1 unit
+var fallInterval = fallIntervals[0];
+
+// Score increase needed to jump to next level
+var levelJumpScore = 1000;
+
+// Make sure you call the following functions after the DOM object is generated in window.onload
 var updateScoreboard = function() {
-    document.getElementById("scoreboard").innerHTML = "Score: " + score.toString();
-    //document.getElementById("scoreboard").innerHTML = score.toString();
+    document.getElementById("scoreboard").innerHTML = "Score: " + gameScore.toString();
+}
+
+var updateGameLevel = function() {
+    document.getElementById("levelDisplay").innerHTML = "Level: " + gameLevel.toString();
+}
+
+var displayGameMessage = function(message) {
+    document.getElementById("gameMessage").innerHTML = message;
+}
+
+var resetGameMessage = function() {
+    document.getElementById("gameMessage").innerHTML = '';
 }
 
 // ---------------------------------
@@ -189,8 +247,6 @@ var equalVector = function(v1, v2) {
     return true;
 }
 
-// LEFT OFF &&&
-
 // --------------------------------------------------
 // Functions to create cubie template (and outlines)
 // --------------------------------------------------
@@ -214,7 +270,7 @@ function quad(a, b, c, d, v)
     var indices = [ a, b, c, a, c, d ];
     for ( var i = 0; i < indices.length; ++i ) {
         // Push the vertices into the vertex array
-        CubiePoints.push( vertices[indices[i]] );
+        points.push( vertices[indices[i]] );
     }
 }
 
@@ -234,7 +290,7 @@ function quadOutline(a, b, c, d, v)
 
     var indices = [ a, b, c, d ];
     for ( var i = 0; i < indices.length; ++i ) {
-        LinePoints.push( vertices[indices[i]] );
+        points.push( vertices[indices[i]] );
     }
 }
 
@@ -277,11 +333,9 @@ function GridQuad(a, b, c, d, v)
         vec4(  v, -v, -v, 1.0 )
     ];
 
-    // 6 vertices determine a face in a quad (2 triangles)
     var indices = [ a, b, c, a, c, d ];
     for ( var i = 0; i < indices.length; ++i ) {
-        // Push the vertices into the vertex array
-        GridPoints.push( vertices[indices[i]] );
+        points.push( vertices[indices[i]] );
     }
 }
 
@@ -296,7 +350,7 @@ function GridSquare(x, y, z) {
 
     // Grid color, white for now
     this.colors = [];
-    for (var i = 0; i < 6; i++) {
+    for (var i = 0; i < 78; i++) {
         this.colors.push(colorTable['white']);   
     }
 
@@ -314,6 +368,10 @@ function GridBottom() {
 
     this.squares = [];
 
+    this.clear = function() {
+        this.squares = [];
+    }
+
     this.init = function() {
         var y = grid_Yn;
         for ( var x = grid_Xn; x <= grid_Xp; x++) {
@@ -329,6 +387,10 @@ function GridLeftWall() {
 
     this.squares = [];
 
+    this.clear = function() {
+        this.squares = [];
+    }
+
     this.init = function() {
         var x = grid_Xn;
         for ( var y = grid_Yn; y <= grid_Yp; y++) {
@@ -343,6 +405,10 @@ function GridLeftWall() {
 function GridBackWall() {
 
     this.squares = [];
+
+    this.clear = function() {
+        this.squares = [];
+    }
 
     this.init = function() {
         var z = grid_Zn;
@@ -397,7 +463,7 @@ function Cubie(x, y, z, color) {
 
     // Cubie's outline colors
     this.lineColors = [];
-    for (var i = 0; i < NumVertices; i++) {
+    for (var i = 0; i < 60; i++) {
         this.lineColors.push(colorTable['black']);    
     }
 
@@ -421,17 +487,26 @@ function Locked() {
     this.height = grid_Yn-1;
 
     // Store cubies according to the row they are in
-    this.cubies = []
-    for (var i = 0; i < grid_Yp-grid_Yn+1; ++i) {
-       this.cubies.push([]);
-    }
-    //console.log(this.cubies)
+    // Need to add extra one because to consider what happens if the top row shifts down
+    // (if top row shifts down, need to replace it with an empty array)
+    this.cubies = [];
 
-    this.colors = []
+    this.colors = [];
     for (var i = 0; i < NumVertices; ++i) {
         this.colors.push(colorTable['gray']);   
     }
 
+    // Initialize potential row for locked cubies based on grid size
+    // Also initialize height again (in case the grid size changes)
+    this.init = function() {
+        this.height = grid_Yn-1;
+        this.cubies = [];
+        for (var i = 0; i < grid_Yp-grid_Yn+2; ++i) {
+           this.cubies.push([]);
+        }
+    }
+
+    // Push cubies onto locked cubies according to row
     this.push = function(cubie) {
         var rowNumber = cubie.currPosition[1]; // row # is y position
         // Need to shift index to start from 0
@@ -447,7 +522,8 @@ function Locked() {
         var bool = false;
         var nextPosition;
 
-        // Most important, determines if a Tetromino should be locked or not
+        // Most important collision, determines if a Tetromino should be locked or not
+
         if (direction == 'down') {
             // Get position from moving cubie down
             nextPosition = mult(translate(0,-1,0), cubie.currPosition);
@@ -499,8 +575,6 @@ function Locked() {
         // Go through each locked cubie and check if it coincides with the new position
         this.cubies.forEach(function(lockedRow) {
             lockedRow.forEach(function(lockedCubie) {
-                //console.log("NEXT", nextPosition, "LOCKED", lockedCubie.currPosition)
-                //console.log("IS EQUAL?", equalVector(nextPosition,lockedCubie.currPosition))
                 if (equalVector(nextPosition, lockedCubie.currPosition)) {
                     bool = true;
                     return;
@@ -511,7 +585,7 @@ function Locked() {
         return bool;
     }
 
-    // Clear rows every time a row is locked
+    // Check if need to clear rows every time a row is locked
     this.clearRows = function() {
 
         // Keep track of how many lines are cleared at once to add to score accordingly
@@ -520,9 +594,6 @@ function Locked() {
         // Check from bottom row to topmost row of cubies
         for (var row = grid_Yn; row <= this.height; ++row) {
             // Check if row is full
-            console.log("CURRENT ROW", row-grid_Yn, ", HEIGHT", this.height-grid_Yn);
-            console.log("CUBIES IN THIS ROW: ", this.cubies[row-grid_Yn].length);
-            console.log("MAX CUBIES IN ROW: ", (grid_Xp-grid_Xn+1)*(grid_Zp-grid_Zn+1));
             if (this.cubies[row-grid_Yn].length == (grid_Xp-grid_Xn+1)*(grid_Zp-grid_Zn+1)) {
                 linesCleared++;
                 // If row is full, clear it by shifting down all rows above
@@ -545,10 +616,84 @@ function Locked() {
 
         // Update score and scoreboard
         if (linesCleared) {
-            score += 1000*Math.pow(2,linesCleared-1);
+            gameScore += 1000*Math.pow(2,linesCleared-1);
         }
-        linesCleared = 0;
         updateScoreboard();
+
+        // Check if level increased (after every score increase)
+        var newGameLevel = Math.floor(gameScore / levelJumpScore) + 1;
+        if (newGameLevel > gameLevel) {
+            // If you beat level 10, you win the game
+            if (newGameLevel == 11) {
+                currTetromino.stopFalling();
+                displayGameMessage("You win!");
+                isGameOver = true;
+                isGameStarted = false;
+                isGamePaused = false;
+                document.getElementById('startButton').disabled = false;
+                document.getElementById('pauseButton').disabled = true;
+                document.getElementById('resetButton').disabled = true;
+                document.getElementById('endButton').disabled = true;
+                // Reenable sliders
+                document.getElementById('gridSizeSlider').disabled = false;
+                document.getElementById('levelSlider').disabled = false;
+                return;
+            }
+            gameLevel = newGameLevel;
+            updateGameLevel();
+            fallInterval = fallIntervals[gameLevel];
+            currTetromino.stopFalling();
+            currTetromino.startFalling(fallInterval);
+        }
+
+        // Display special message
+        if (linesCleared == 1) {
+            displayGameMessage("Single!");
+        } else if (linesCleared == 2) {
+            displayGameMessage("Double!");
+        } else if (linesCleared == 3) {
+            displayGameMessage("Triple!");
+        } else if (linesCleared == 4) {
+            displayGameMessage("Tetris!");
+        }
+
+        // Reset lines cleared
+        linesCleared = 0;
+    }
+
+    // Check if game over after a new Tetromino is spawned
+    this.gameOver = function() {
+        var bool = false;
+        // Only need to check this if game is danger of being over (if the height has reached the top 2 rows)
+        // If height is at least 2nd to top row, check that row
+        if (this.height >= grid_Yp-1) {
+            this.cubies[grid_Yp-1-grid_Yn].forEach(function(lockedCubie) {
+                currTetromino.cubies.forEach(function(cubie) {
+                    if (equalVector(cubie.currPosition, lockedCubie.currPosition)) {
+                        bool = true;
+                        return;
+                    }
+                });
+                if (bool) {
+                    return;
+                } 
+            });
+            // Next check the top row if height is actually the top row
+            if (this.height >= grid_Yp) {
+                this.cubies[grid_Yp-grid_Yn].forEach(function(lockedCubie) {
+                    currTetromino.cubies.forEach(function(cubie) {
+                        if (equalVector(cubie.currPosition, lockedCubie.currPosition)) {
+                            bool = true;
+                            return;
+                        }
+                    });
+                    if (bool) {
+                        return;
+                    } 
+                });
+            }
+        }
+        return bool;
     }
 }
 
@@ -558,12 +703,20 @@ var lockedCubies = new Locked();
 // Tetromino class
 // -------------------------
 
-function Tetromino(type) {
+function Tetromino() {
 
     this.cubies = [];
 
+    // Clear current Tetromino
+    this.clear = function() {
+        this.cubies = [];
+    }
+
+    // Previous piece, initialized to nothing
+    this.previousPiece = '';
+
     // Initialize Tetromino based on type
-    this.init = function() {
+    this.init = function(type) {
         if (type == 'I') {
             this.cubies.push(new Cubie(-2,0,0,'cyan'));
             this.cubies.push(new Cubie(-1,0,0,'cyan'));
@@ -606,10 +759,9 @@ function Tetromino(type) {
             cubie.translationMatrix = mult(translate(0,grid_Yp,0), cubie.translationMatrix);
             cubie.currPosition = mult(translate(0,grid_Yp,0), cubie.currPosition);
         });
+        // Bookmark the previous piece
+        this.previousPiece = type;
     }
-
-    // NEED TO CHECK COLLISIONS DUE TO TRANSLATION AND ROTATIONS WITH OTHER PIECES
-    // First, check collision when falling
 
     // Check if translation will result in out of bounds condition
     this.canTranslate = function(direction) {
@@ -665,10 +817,8 @@ function Tetromino(type) {
 
     // Modify the translation matrix for the vertex shader and also change the currnet position
     this.translate = function(direction) {
-        //console.log(this.canTranslate(direction))
         if (this.canTranslate(direction)) {
             this.cubies.forEach(function(cubie) {
-                //console.log("before TRANSlATE", cubie.currPosition)
                 if (direction == 'left') {
                     // Remember to add spacing or it won't look right
                     cubie.translationMatrixSpaced = mult(translate(-1*spacing,0,0), cubie.translationMatrixSpaced);
@@ -689,7 +839,23 @@ function Tetromino(type) {
                 // Update the current location
                 cubie.currPosition = mult(cubie.rotationMatrix, cubie.origPosition);
                 cubie.currPosition = mult(cubie.translationMatrix, cubie.currPosition);
-                //console.log('after TRANSLATE', cubie.currPosition)
+            });
+        }
+    }
+
+    // Hard drop the Tetromino
+    this.drop = function() {
+        // Keep track of how many units it can move down
+        var unitsDown = 0;
+        // Keep moving down until it can't anymore
+        // Lock is inherent in canTranslate
+        while (this.canTranslate('down')) {
+            unitsDown++;
+            this.cubies.forEach(function(cubie) {
+                cubie.translationMatrixSpaced = mult(translate(0,-1*spacing,0), cubie.translationMatrixSpaced);
+                cubie.translationMatrix = mult(translate(0,-1,0), cubie.translationMatrix);
+                cubie.currPosition = mult(cubie.rotationMatrix, cubie.origPosition);
+                cubie.currPosition = mult(cubie.translationMatrix, cubie.currPosition);
             });
         }
     }
@@ -741,14 +907,9 @@ function Tetromino(type) {
         } else if (direction == 'yCCW') {
             var i = 0;
             this.cubies.forEach(function(cubie) {
-                //console.log('CUBIE', i++);
-                //console.log("currrot",cubie.origPosition)
                 newPos = mult(cubie.prevRotationMatrix, cubie.origPosition);
-                //console.log("rot1",cubie.currPosition)
                 newPos = roundVector(mult(rotateY(90.0), newPos));
-                //console.log("rot2",cubie.currPosition)
                 newPos = mult(cubie.translationMatrix, newPos);
-                //console.log("newrot",newPos)
                 if (newPos[xAxis] == grid_Xn-1 || newPos[xAxis] == grid_Xp+1 ||
                     newPos[yAxis] == grid_Yn-1 || newPos[yAxis] == grid_Yp+1 ||
                     newPos[zAxis] == grid_Zn-1 || newPos[zAxis] == grid_Zp+1 ||
@@ -846,7 +1007,7 @@ function Tetromino(type) {
 
     // Lock Tetrimino in place
     this.lock = function() {
-        console.log("I AM LOCKING")
+        //console.log("I AM LOCKING")
         // Add to locked cubes
         this.cubies.forEach(function(cubie) {
             var x = cubie.currPosition[0];
@@ -859,16 +1020,64 @@ function Tetromino(type) {
         lockedCubies.clearRows();
         // Spawn a new Tetromino
         // Later change it so that the same one can't be spawned consecutively
-        currTetromino = new Tetromino(tetrominoTable[Math.floor(Math.random()*tetrominoTable.length)]);
-        //currTetromino = new Tetromino("I");
-        currTetromino.init();
+        spawnTetromino();
+        // Check if new Tetromino will result in game over
+        if (lockedCubies.gameOver()) {
+            currTetromino.stopFalling();
+            displayGameMessage("Game over.");
+            isGameOver = true;
+            isGameStarted = false;
+            isGamePaused = false;
+            document.getElementById('startButton').disabled = false;
+            document.getElementById('pauseButton').disabled = true;
+            document.getElementById('resetButton').disabled = true;
+            document.getElementById('endButton').disabled = true;
+            // Reenable sliders
+            document.getElementById('gridSizeSlider').disabled = false;
+            document.getElementById('levelSlider').disabled = false;
+        }
+    }
+
+    // For setInterval and clearInterval
+    this.interval;
+
+    // Tells Tetromino to start falling
+    this.startFalling = function(delay) {
+        // Tetromino will fall in between intervals, stops falling when the game stops    
+        this.interval = setInterval(function() {
+            enqueueAction('translation','down');
+        }, delay);
+    }
+
+    // Forces Tetromino to stop falling
+    this.stopFalling = function() {
+        clearInterval(this.interval);
     }
 }
 
 var tetrominoTable = ['I','O','T','J','L','S','Z'];
-var currTetromino = new Tetromino(tetrominoTable[Math.floor(Math.random()*tetrominoTable.length)]);
-//currTetromino = new Tetromino("I");
-currTetromino.init();
+
+// Current Tetromino piece
+// Initialize to placeholder but not actually rendered
+var currTetromino = new Tetromino();
+
+// Spawn a new Tetromino piece
+// Ensures that no same piece can be spawned consecutively
+var spawnTetromino = function() {
+    var indexOfPreviousPiece = tetrominoTable.indexOf(currTetromino.previousPiece);
+    var currTetrominoTable = tetrominoTable.slice();
+    // Check if there was a previous piece (i.e. if start of game)
+    // If so, remove it from list
+    if (indexOfPreviousPiece != -1) {
+        currTetrominoTable.splice(indexOfPreviousPiece,1);
+    }
+    currTetromino.clear();
+    if (!DEMO) {
+    currTetromino.init(currTetrominoTable[Math.floor(Math.random()*currTetrominoTable.length)]);
+    } else { // SPAM I BLOCKS FOR DEMO
+    currTetromino.init("I");
+    }
+}
 
 // -------------------------
 // Action queue functions
@@ -912,10 +1121,14 @@ function initEventListeners() {
     // --------------------------
 
     document.onkeydown = function(e) {
+
+        // If game hasn't started, is over, or is paused ignore commands
+        if (!isGameStarted || isGameOver || isGamePaused) { return; }
+
         switch (e.keyCode) {
             case 39: // right arrow, move right
                 if (!e.shiftKey) {
-                    enqueueAction('translation','right');//, -1*(e.shiftKey ? -1 : 1));
+                    enqueueAction('translation','right');
                 } else {
                     enqueueAction('rotation','xCCW');
                 }
@@ -924,7 +1137,7 @@ function initEventListeners() {
 
             case 37: // left arrow, move left
                 if (!e.shiftKey) {
-                    enqueueAction('translation','left');//, -1*(e.shiftKey ? -1 : 1));
+                    enqueueAction('translation','left');
                 } else {
                     enqueueAction('rotation','xCW');
                 }
@@ -939,7 +1152,7 @@ function initEventListeners() {
 
             case 40: // down arrow, move down
                 if (!e.shiftKey) {
-                    enqueueAction('translation','down');//,-1*(e.shiftKey ? -1 : 1));
+                    enqueueAction('translation','down');
                 } else {
                     enqueueAction('rotation','yCW');
                 }
@@ -948,7 +1161,7 @@ function initEventListeners() {
 
             case 90: // Z, move front
                 if (!e.shiftKey) {
-                    enqueueAction('translation','front');//,-1*(e.shiftKey ? -1 : 1));
+                    enqueueAction('translation','front');
                 } else {
                     enqueueAction('rotation','zCCW');
                 }
@@ -957,10 +1170,15 @@ function initEventListeners() {
 
             case 88: // X, move back
                 if (!e.shiftKey) {
-                    enqueueAction('translation','back');//,-1*(e.shiftKey ? -1 : 1));
+                    enqueueAction('translation','back');
                 } else {
                     enqueueAction('rotation','zCW');
                 }
+                e.preventDefault();
+                break;
+
+            case 32: // space bar, hard drop
+                enqueueAction('translation','drop');
                 e.preventDefault();
                 break;
         }
@@ -1038,6 +1256,143 @@ function initEventListeners() {
             cameraRadius -= e.wheelDelta/75;
         }
     });
+
+    // ----------------------------
+    // Event listeners for buttons
+    // ----------------------------
+
+    document.getElementById('startButton').onclick = function() {
+        // Check flags
+        isGameStarted = true;
+        isGameOver = false;
+        isGamePaused = false;
+        // Reset score
+        gameScore = 0;
+        updateScoreboard();
+        // Set level display
+        updateGameLevel();
+        // Clear game message
+        resetGameMessage();
+        // Disable start and enable pause/restart after game starts
+        document.getElementById('startButton').disabled = true;
+        document.getElementById('pauseButton').disabled = false;
+        document.getElementById('resetButton').disabled = false;
+        document.getElementById('endButton').disabled = false;
+        // Disable sliders when game is starting
+        document.getElementById('gridSizeSlider').disabled = true;
+        document.getElementById('levelSlider').disabled = true;
+        // Clear grid and set to size indicated by slider
+        gridBottom.clear();
+        gridLeftWall.clear();
+        gridBackWall.clear();
+        gridBottom.init();
+        gridLeftWall.init();
+        gridBackWall.init();
+        // Clear and resize grid
+        lockedCubies.init();
+        // Spawn new Tetrimino
+        spawnTetromino();
+        // Tell Tetrimino to start falling
+        currTetromino.startFalling(fallInterval);
+    }
+
+    document.getElementById('pauseButton').onclick = function() {
+        isGamePaused = !isGamePaused;
+        // Pause, stop falling
+        if (isGamePaused) {
+            currTetromino.stopFalling();
+            displayGameMessage("Paused.");
+        }
+        // Unpause, start falling again
+        else {
+            resetGameMessage();
+            currTetromino.startFalling(fallInterval);
+        }
+    }
+
+    // Restart the game when it is in progress
+    document.getElementById('resetButton').onclick = function() {
+        // First stop falling
+        currTetromino.stopFalling();
+        isGameStarted = true;
+        isGameOver = false;
+        isGamePaused = false;
+        gameScore = 0;
+        updateScoreboard();
+        updateGameLevel();
+        resetGameMessage();
+        gridBottom.clear();
+        gridLeftWall.clear();
+        gridBackWall.clear();
+        gridBottom.init();
+        gridLeftWall.init();
+        gridBackWall.init();
+        lockedCubies.init();
+        spawnTetromino();
+        // Finally restart falling
+        currTetromino.startFalling(fallInterval);
+    }
+
+    // End the game when it is in progress, simulates game over state
+    document.getElementById('endButton').onclick = function() {
+        // End button stops falling, start button will restart falling
+        currTetromino.stopFalling();
+        displayGameMessage("Game ended.");
+        isGameOver = true;
+        isGameStarted = false;
+        isGamePaused = false;
+        document.getElementById('startButton').disabled = false;
+        document.getElementById('pauseButton').disabled = true;
+        document.getElementById('resetButton').disabled = true;
+        document.getElementById('endButton').disabled = true;
+        // Reenable sliders
+        document.getElementById('gridSizeSlider').disabled = false;
+        document.getElementById('levelSlider').disabled = false;
+    }
+
+    // -----------------------------------------
+    // Event listeners for sliders
+    // -----------------------------------------
+
+    document.getElementById("gridSizeSlider").onchange = function(e) {
+
+        // Maps slider values to actual values
+        var gridSize = parseInt(e.target.value);
+        switch(gridSize) {
+            case 0:
+                // 4x9x4
+                grid_Xp = 1;
+                grid_Xn = -2;
+                grid_Yp = 4;
+                grid_Yn = -4;
+                grid_Zp = 1;
+                grid_Zn = -2;
+                break;
+            case 1:
+                // 6x14x6
+                grid_Xp = 2;
+                grid_Xn = -3;
+                grid_Yp = 6;
+                grid_Yn = -7;
+                grid_Zp = 2;
+                grid_Zn = -3;
+                break;
+            case 2:
+                // 7x16x7
+                grid_Xp = 3;
+                grid_Xn = -3;
+                grid_Yp = 7;
+                grid_Yn = -8;
+                grid_Zp = 3;
+                grid_Zn = -3;
+                break;
+        }
+    };
+
+    document.getElementById("levelSlider").onchange = function(e) {
+        gameLevel = parseInt(e.target.value);
+        fallInterval = fallIntervals[gameLevel];
+    };
 }
 
 // ----------------------------------------
@@ -1053,29 +1408,44 @@ window.onload = function init()
     if ( !gl ) { alert( "WebGL isn't available" ); }
 
     gl.viewport( 0, 0, canvas.width, canvas.height );
-    //gl.clearColor( 1.0, 0.5, 0.6, 0.75 ); //pink
     //gl.clearColor( 1.0, 1.0, 1.0, 1.0 ); //white
+    //gl.clearColor( 1.0, 0.5, 0.6, 0.75 ); //pink
     gl.clearColor( 0.0, 0.0, 0.0, 1.0 ); //black
 
     gl.enable(gl.DEPTH_TEST);
 
-    // Initialize the grid bottom
-    gridBottom.init();
-    gridLeftWall.init();
-    gridBackWall.init();
-
-    // Push in vertices for grid bottom template
-    GridQuad( 3, 0, 4, 7, vertexPos);
-    GridQuad( 5, 4, 0, 1, vertexPos); // left face
-    GridQuad( 4, 5, 6, 7, vertexPos); // back face
-    // GridLeftWallSquare();
-    // GridBackWallSquare();
-
-    cubelet(vertexPos);
-
     // Load shaders and initialize attribute buffers
     program = initShaders( gl, "vertex-shader", "fragment-shader" );
     gl.useProgram( program );
+
+    // Push in vertices to vertex buffer
+    // 0-36 is cubie
+    // 36-60 is cubie outline
+    // 60-78 is grid square
+    cubelet(vertexPos);
+    GridQuad( 3, 0, 4, 7, vertexPos); // bottom
+    GridQuad( 5, 4, 0, 1, vertexPos); // left
+    GridQuad( 4, 5, 6, 7, vertexPos); // back
+
+    // Load the vertex buffers
+    var vBuffer = gl.createBuffer();
+    gl.bindBuffer( gl.ARRAY_BUFFER, vBuffer );
+    gl.bufferData( gl.ARRAY_BUFFER, flatten(points), gl.STATIC_DRAW );
+
+    var vPosition = gl.getAttribLocation( program, "vPosition" );
+    gl.vertexAttribPointer( vPosition, 4, gl.FLOAT, false, 0, 0 );
+    gl.enableVertexAttribArray( vPosition );
+
+    // Load the color buffers
+    /*
+    var cBuffer = gl.createBuffer();
+    gl.bindBuffer( gl.ARRAY_BUFFER, cBuffer );
+    gl.bufferData( gl.ARRAY_BUFFER, flatten(colors), gl.STATIC_DRAW );
+
+    var vColor = gl.getAttribLocation( program, "vColor" );
+    gl.vertexAttribPointer( vColor, 4, gl.FLOAT, false, 0, 0 );
+    gl.enableVertexAttribArray( vColor );
+    */
 
     // Set up uniforms
     worldViewMatrixLoc = gl.getUniformLocation(program, "worldViewMatrix");
@@ -1085,8 +1455,23 @@ window.onload = function init()
     // Initialize event listeners
     initEventListeners();
 
+    // Start button should be enabled (disabled during game)
+    // Pause button should be disabled (only enabled in game)
+    // Restart button should be disabled (enabled in game)
+    /// End button should be disabled (enabled in game)
+    document.getElementById('startButton').disabled = false;
+    document.getElementById('pauseButton').disabled = true;
+    document.getElementById('resetButton').disabled = true
+    document.getElementById('resetButton').disabled = true;
+
     // Initialize the scoreboard to 0
     updateScoreboard();
+
+    // Initialize the game level to 0
+    updateGameLevel();
+
+    // Clear the game message
+    resetGameMessage();
 
     render();
 }
@@ -1097,6 +1482,7 @@ window.onload = function init()
 
 function render()
 {
+
     gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     // -------------------------
@@ -1119,22 +1505,11 @@ function render()
 
     // Projection matrix
     projectionMatrix = perspective(fovy, aspect, near, far);
-    //var orthoTop = 10;
-    //projectionMatrix = ortho(-orthoTop, orthoTop, -orthoTop, orthoTop, near, far);
     gl.uniformMatrix4fv(projectionMatrixLoc, false, flatten(projectionMatrix));
 
     // -------------------------
     // Render the grid
     // -------------------------
-
-    // Put the grid bottom template tile in the buffer
-    var vBuffer = gl.createBuffer();
-    gl.bindBuffer( gl.ARRAY_BUFFER, vBuffer );
-    gl.bufferData( gl.ARRAY_BUFFER, flatten(GridPoints.slice(0,6)), gl.STATIC_DRAW );
-
-    var vPosition = gl.getAttribLocation( program, "vPosition" );
-    gl.vertexAttribPointer( vPosition, 4, gl.FLOAT, false, 0, 0 );
-    gl.enableVertexAttribArray( vPosition );
 
     // Render the grid bottom
     gridBottom.squares.forEach(function(square) {
@@ -1152,20 +1527,11 @@ function render()
         gl.vertexAttribPointer( vColor, 4, gl.FLOAT, false, 0, 0 );
         gl.enableVertexAttribArray( vColor );
 
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.drawArrays(gl.TRIANGLES, 60, 6);
 
         // Reset world view matrix
         worldViewMatrix = mat4(); 
     });
-
-    // Put the grid left wall template tile in the buffer
-    var vBuffer = gl.createBuffer();
-    gl.bindBuffer( gl.ARRAY_BUFFER, vBuffer );
-    gl.bufferData( gl.ARRAY_BUFFER, flatten(GridPoints.slice(6,12)), gl.STATIC_DRAW );
-
-    var vPosition = gl.getAttribLocation( program, "vPosition" );
-    gl.vertexAttribPointer( vPosition, 4, gl.FLOAT, false, 0, 0 );
-    gl.enableVertexAttribArray( vPosition );
 
     // Render the grid left wall
     gridLeftWall.squares.forEach(function(square) {
@@ -1181,19 +1547,10 @@ function render()
         gl.vertexAttribPointer( vColor, 4, gl.FLOAT, false, 0, 0 );
         gl.enableVertexAttribArray( vColor );
 
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.drawArrays(gl.TRIANGLES, 66, 6);
 
         worldViewMatrix = mat4();
     });
-
-    // Put the grid left wall template tile in the buffer
-    var vBuffer = gl.createBuffer();
-    gl.bindBuffer( gl.ARRAY_BUFFER, vBuffer );
-    gl.bufferData( gl.ARRAY_BUFFER, flatten(GridPoints.slice(12,18)), gl.STATIC_DRAW );
-
-    var vPosition = gl.getAttribLocation( program, "vPosition" );
-    gl.vertexAttribPointer( vPosition, 4, gl.FLOAT, false, 0, 0 );
-    gl.enableVertexAttribArray( vPosition );
 
     // Render the grid back wall
     gridBackWall.squares.forEach(function(square) {
@@ -1209,7 +1566,7 @@ function render()
         gl.vertexAttribPointer( vColor, 4, gl.FLOAT, false, 0, 0 );
         gl.enableVertexAttribArray( vColor );
 
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.drawArrays(gl.TRIANGLES, 72, 6);
 
         worldViewMatrix = mat4();
     });
@@ -1219,7 +1576,12 @@ function render()
     // ----------------------------------------
 
     if (currentAction == 'translation') {
-        currTetromino.translate(translationDir);
+        // Check if action is drop
+        if (translationDir == 'drop') {
+            currTetromino.drop();
+        } else {
+            currTetromino.translate(translationDir);
+        }
         // Reset the flag until the next action is popped
         currentAction = 'none';
         // Continue dequeuing actions until action queue is depleted
@@ -1238,15 +1600,6 @@ function render()
     // ----------------------------------------
     // Render the current Tetromino
     // ----------------------------------------
-
-    // Load the cubie template in the buffer
-    var vBuffer = gl.createBuffer();
-    gl.bindBuffer( gl.ARRAY_BUFFER, vBuffer );
-    gl.bufferData( gl.ARRAY_BUFFER, flatten(CubiePoints), gl.STATIC_DRAW );
-
-    var vPosition = gl.getAttribLocation( program, "vPosition" );
-    gl.vertexAttribPointer( vPosition, 4, gl.FLOAT, false, 0, 0 );
-    gl.enableVertexAttribArray( vPosition );
 
     // Render each cubie for the Tetromino
     currTetromino.cubies.forEach(function(cubie) {
@@ -1270,8 +1623,6 @@ function render()
     // ----------------------------------------
     // Render the locked in Tetrominos
     // ----------------------------------------
-
-    // Note: The cubie template is already loaded, don't need to reload
 
     // Render each cubie for the locked in pieces
     // Need to go through rows first, then the cubies in each row
@@ -1300,15 +1651,6 @@ function render()
     // Render the cubie outlines
     // ----------------------------------------
 
-    // Load in the cubie outline template
-    var vBuffer = gl.createBuffer();
-    gl.bindBuffer( gl.ARRAY_BUFFER, vBuffer );
-    gl.bufferData( gl.ARRAY_BUFFER, flatten(LinePoints), gl.STATIC_DRAW );
-
-    var vPosition = gl.getAttribLocation( program, "vPosition" );
-    gl.vertexAttribPointer( vPosition, 4, gl.FLOAT, false, 0, 0 );
-    gl.enableVertexAttribArray( vPosition );
-
     // Render the outlines for the Tetromino
     currTetromino.cubies.forEach(function(cubie) {
 
@@ -1324,12 +1666,12 @@ function render()
         gl.enableVertexAttribArray( vColor );
 
         // Draw lines instead of triangles
-        gl.drawArrays(gl.LINES, 0, 24);
+        gl.drawArrays(gl.LINES, 36, 24);
 
         worldViewMatrix = mat4();
     });
 
-    // Render the outlines for the locked in pieces
+
     lockedCubies.cubies.forEach(function(row) {
 
         row.forEach(function(cubie) {
@@ -1345,7 +1687,7 @@ function render()
             gl.vertexAttribPointer( vColor, 4, gl.FLOAT, false, 0, 0 );
             gl.enableVertexAttribArray( vColor );
 
-            gl.drawArrays(gl.LINES, 0, 24);
+            gl.drawArrays(gl.LINES, 36, 24);
 
             worldViewMatrix = mat4();
         });
@@ -1353,886 +1695,3 @@ function render()
 
     requestAnimFrame( render );
 }
-
-
-/*
-
-var canvas;
-var gl;
-var program;
-
-// Number of vertices to draw in drawArray function
-var NumVertices = 36;
-
-// Absolute value of each coordinate of each vertex for center cube
-var vertexPos = 0.5;
-
-// Length of side of one of the cubelets
-var sidelen = 2*vertexPos;
-
-// Spacing between cubelets
-var spacing = 1.1;
-
-// Vertex and color buffers used for rendering
-var points = [];
-var colors = [];
-
-// Spherical coordinate angles for rotating the cube
-// Distinguished with THETA_START and PHI_START, which are for the camera
-// dPHI and dTHETA are the incremental angles to add to THETA and PHI while rotating
-var THETA = radians(45);
-var PHI = radians(45);
-var dTHETA = 0;
-var dPHI = 0;
-
-// For rotating whole cube with mouse
-var AMORTIZATION = 0.95; // used to scale down PHI and THETA to produce fading motion
-var heldDown = false; // checks if mouse button is held
-
-// Camera distance from object
-var cameraRadius = 20.0;
-
-// For zooming in and out
-var cameraRadiusMin = 12.5;
-var cameraRadiusMax = 50.0;
-
-// For the lookAt function (model-view matrix)
-var eye = vec3(cameraRadius*Math.sin(PHI)*Math.sin(THETA),
-            cameraRadius*Math.cos(PHI),
-            cameraRadius*Math.sin(PHI)*Math.cos(THETA));
-var at = vec3(0.0, 0.0, 0.0); // point camera towards origin
-var up = vec3(0.0, 1.0, 0.0); // positive y-axis
-
-// For the perspective function (projection matrix)
-var fovy = 45.0;
-var aspect = 1.0;
-var near = 0.3;
-var far = 1000;
-
-// For face rotations
-var rotationAxis = 0;
-var rotationFace = 'none';
-var rotationDir; // 1 indicates CW, -1 is CCW
-
-// Used for rotation speed
-// Temporary is used for switching speeds using the slider during a sequence of rotations
-// Value of slider is stored in temp, then used for the actual speed only after a turn is done
-var rotationSpeed = 15.0;
-var rotationSpeedTemp = rotationSpeed;
-
-// Indicator to check if a cubelet has rotated one turn (up to 90 degrees)
-// Initialized at 90 so no rotations occur (rotation occurs only if <90)
-var rotationAngle = 90;
-
-// Queue for rotations, a rotation doesn't happen until the preceding rotations in the queue occur
-var rotationQueue = [];
-
-// Indicators for each axis for rotations
-var xAxis = 0;
-var yAxis = 1;
-var zAxis = 2;
-
-// Store angle positions for each cubelet
-// Cubelet positions are their current positions, not their old ones
-// Angle values get reset after a full turn
-var thetaCubelet = new Array();
-for (var ix = -1; ix <= 1; ix++) {
-    var tempArrX = new Array();
-    for (var iy = -1; iy <= 1; iy++) {
-        var tempArrY = new Array();
-        for (var iz = -1; iz <= 1; iz++) {
-            tempArrY.push([0,0,0]);
-        }
-        tempArrX.push(tempArrY);
-    }
-    thetaCubelet.push(tempArrX);
-}
-
-// Keep track of positions for each cubelet
-// Indices represent the original position (0,1,2 corresponds to -1,0,1)
-// Elements are vec4s that represent the new coordinates (after rotations)
-var cubeletPosition = new Array();
-for (var ix = -1; ix <= 1; ix++) {
-    var tempArrX = new Array();
-    for (var iy = -1; iy <= 1; iy++) {
-        var tempArrY = new Array();
-        for (var iz = -1; iz <= 1; iz++) {
-            tempArrY.push(vec4(ix,iy,iz,1));
-        }
-        tempArrX.push(tempArrY);
-    }
-    cubeletPosition.push(tempArrX);
-}
-
-// Keep track of cubelet transformation matrices, incremental turns
-// Indices represent the original position (before rotations, since this is the matrix to get to the position post rotation)
-// This is sent to the vertex shader
-// Once a full turn has been made, values are rounded up and used to transform the positions matrix
-var cubeletMatrix = new Array();
-for (var ix = -1; ix <= 1; ix++) {
-    var tempArrX = new Array();
-    for (var iy = -1; iy <= 1; iy++) {
-        var tempArrY = new Array();
-        for (var iz = -1; iz <= 1; iz++) {
-            tempArrY.push(mat4());
-        }
-        tempArrX.push(tempArrY);
-    }
-    cubeletMatrix.push(tempArrX);
-}
-
-// Keep track of each cubelet's orientation
-// Used for checking if cube is solved (if orientations are all the same)
-// Each orientation consists of 2 vectors indicating the normals of two orthogonal faces of the cube
-// since 2 orthogonal faces determine the other faces
-// Initial orientation is all the same, at (1,0,0), (0,1,0)
-var cubeletOrientation = new Array();
-for (var ix = -1; ix <= 1; ix++) {
-    var tempArrX = new Array();
-    for (var iy = -1; iy <= 1; iy++) {
-        var tempArrY = new Array();
-        for (var iz = -1; iz <= 1; iz++) {
-            var tempArrZ = new Array();
-            tempArrZ.push(vec4(1,0,0,0)); // last element is 0 since vector, not point
-            tempArrZ.push(vec4(0,1,0,0));
-            tempArrY.push(tempArrZ);
-        }
-        tempArrX.push(tempArrY);
-    }
-    cubeletOrientation.push(tempArrX);
-}
-
-// Globals for transformation matrices
-var worldViewMatrix = mat4();
-var projectionMatrix;
-var modelViewMatrix;
-
-// Locks the transformation matrices to pass to vertex shader
-var worldViewMatrixLoc;
-var projectionMatrixLoc;
-var modelViewMatrixLoc;
-
-// For randomize function, stores how many steps to randomize
-var randomStepCount;
-
-// For text file (save state) generation, needs to be global
-// so previous file can be revoked otherwise there is a memory leak
-var textFile = null;
-
-// For loading in a file
-var isFileLoaded = false; // checks if user has loaded a file
-var fileContents; // contains the actual contents of the file to be loaded into cubeletPosition
-
-// Helper function that indicates if cube is currently rotating
-// If it is rotating, button presses don't do anything
-function isRotating() {
-    return (rotationAngle < 90);
-}
-
-// Init function
-window.onload = function init()
-{
-    canvas = document.getElementById( "gl-canvas" );
-
-    // Set up WebGL
-    gl = WebGLUtils.setupWebGL( canvas );
-    if ( !gl ) { alert( "WebGL isn't available" ); }
-
-    gl.viewport( 0, 0, canvas.width, canvas.height );
-    gl.clearColor( 1.0, 0.5, 0.6, 0.75 ); //gray
-    //gl.clearColor( 1.0, 1.0, 1.0, 1.0 ); //white
-
-    gl.enable(gl.DEPTH_TEST);
-
-    // Generate Rubik's cube
-    cubelet(vertexPos);
-    genColors();
-
-    // Load shaders and initialize attribute buffers
-    program = initShaders( gl, "vertex-shader", "fragment-shader" );
-    gl.useProgram( program );
-
-    // Set up uniforms
-    worldViewMatrixLoc = gl.getUniformLocation(program, "worldViewMatrix");
-    modelViewMatrixLoc = gl.getUniformLocation(program, "modelViewMatrix");
-    projectionMatrixLoc = gl.getUniformLocation(program, "projectionMatrix");
-
-    // Event listeners for mouse
-
-    var startX, startY;
-
-    canvas.addEventListener("mousedown", function(e) {
-        heldDown = true;
-        // Keep track of starting x and y positions
-        startX = e.pageX;
-        startY = e.pageY;
-        //dTHETA = dPHI = 0;
-        e.preventDefault();
-        return false;
-    });
-
-    canvas.addEventListener("mouseup", function(e) {
-        heldDown = false;
-    });
-
-    canvas.addEventListener("mousemove", function(e) {
-        // If mouse isn't held down, nothing happens
-        if (!heldDown) {
-            return false;
-        }
-        // Otherwise, if mouse is held down, rotate the cube if dragged/
-        // First find the distance between the old and new mouse positions
-        // Then convert into radians by comparing it with the canvas dimensions
-        // Negative d means counterclockwise
-        dTHETA = (e.pageX-startX)*2*Math.PI/canvas.width;
-        dPHI = (e.pageY-startY)*2*Math.PI/canvas.height;
-
-        // From degrees(PHI) E [-180, 0] U [180, 360], the up vector begins to point in
-        // the opposite direction and the cube flips to preserve the up direction.
-        // We don't want this to happen, so we flip the up vector when this happens
-        // (also changes direction of rotation for THETA).
-        if ((PHI > Math.PI && PHI < 2*Math.PI) || (PHI < 0 && PHI > -Math.PI)) {
-            up = vec3(0.0, -1.0, 0.0);
-            THETA = (THETA+dTHETA)%(2*Math.PI);
-        } else {
-            up = vec3(0.0, 1.0, 0.0);
-            THETA = (THETA-dTHETA)%(2*Math.PI);
-        }
-        PHI = (PHI-dPHI)%(2*Math.PI);
-
-        // Save ending position as next starting position
-        startX = e.pageX;
-        startY = e.pageY;
-        e.preventDefault();
-    });
-
-    canvas.addEventListener("mousewheel", function(e) {
-        // Restrict to minimum and maximum zoom windows
-        if (cameraRadius - e.wheelDelta/75 < cameraRadiusMin) {
-            cameraRadius = cameraRadiusMin;
-        } else if (cameraRadius - e.wheelDelta/75 > cameraRadiusMax) {
-            cameraRadius = cameraRadiusMax;
-        // If restrictions are not met, just zoom in or out
-        } else {
-            cameraRadius -= e.wheelDelta/75;
-        }
-    });
-
-    // Event listeners for rotation buttons
-    document.getElementById( "rightButton" ).onclick = function () {
-        enqueueRotation('right', -1);
-    };
-    document.getElementById( "leftButton" ).onclick = function () {
-        enqueueRotation('left', -1);
-    };
-    document.getElementById( "topButton" ).onclick = function () {
-        enqueueRotation('top', -1);
-    };
-    document.getElementById( "bottomButton" ).onclick = function () {
-        enqueueRotation('bottom', -1);
-    };
-    document.getElementById( "frontButton" ).onclick = function () {
-        enqueueRotation('front', -1);
-    };
-    document.getElementById( "backButton" ).onclick = function () {
-        enqueueRotation('back', -1);
-    };
-    document.getElementById( "rightButtonRev" ).onclick = function () {
-        enqueueRotation('right', 1);
-    };
-    document.getElementById( "leftButtonRev" ).onclick = function () {
-        enqueueRotation('left', 1);
-    };
-    document.getElementById( "topButtonRev" ).onclick = function () {
-        enqueueRotation('top', 1);
-    };
-    document.getElementById( "bottomButtonRev" ).onclick = function () {
-        enqueueRotation('bottom', 1);
-    };
-    document.getElementById( "frontButtonRev" ).onclick = function () {
-        enqueueRotation('front', 1);
-    };
-    document.getElementById( "backButtonRev" ).onclick = function () {
-        enqueueRotation('back', 1);
-    };
-
-    // Event listeners for keys (for rotation)
-    document.onkeydown = function(e) {
-        switch (e.keyCode) {
-            case 39: // right arrow, rotates right face
-                enqueueRotation('right', -1*(e.shiftKey ? -1 : 1));
-                e.preventDefault();
-                break;
-
-            case 37: // left arrow, rotates left face
-                enqueueRotation('left', -1*(e.shiftKey ? -1 : 1));
-                e.preventDefault();
-                break;
-
-            case 38: // up arrow, rotates top face
-                enqueueRotation('top',-1*(e.shiftKey ? -1 : 1));
-                e.preventDefault();
-                break;
-
-            case 40: // down arrow, rotates bottom face
-                enqueueRotation('bottom',-1*(e.shiftKey ? -1 : 1));
-                e.preventDefault();
-                break;
-
-            case 90: // Z, rotates front face
-                enqueueRotation('front',-1*(e.shiftKey ? -1 : 1));
-                e.preventDefault();
-                break;
-
-            case 88: // X, rotates back face
-                enqueueRotation('back',-1*(e.shiftKey ? -1 : 1));
-                e.preventDefault();
-                break;
-        }
-    }
-
-    // Event listener for slider for rotation speed
-    document.getElementById("speedSlider").onchange = function(e) {
-        // Maps slider values to actual values
-        rotationSpeedTemp = parseInt(e.target.value);
-        switch(rotationSpeedTemp) {
-            case 1:
-                rotationSpeedTemp = 1;
-                break;
-            case 2:
-                rotationSpeedTemp = 2;
-                break;
-            case 3:
-                rotationSpeedTemp = 3;
-                break;
-            case 4:
-                rotationSpeedTemp = 5;
-                break;
-            case 5:
-                rotationSpeedTemp = 6;
-                break;
-            case 6:
-                rotationSpeedTemp = 15;
-                break;
-            case 7:
-                rotationSpeedTemp = 18;
-                break;
-            case 8:
-                rotationSpeedTemp = 30;
-                break;
-            case 9:
-                rotationSpeedTemp = 45;
-                break;
-            case 10:
-                rotationSpeedTemp = 90;
-                break;
-        }
-    };
-
-    // Event listeners for buttons for other functionalities
-
-    document.getElementById("resetButton").onclick = function(e) {
-        if (!isRotating()) {
-            resetState();
-            //displaySolved(); // need to redo this upon loading
-        }
-        // Reset the state upon button press
-        function resetState() {
-            // Reset the cubelet positions to starting
-            // Reset the cubelet matrices back to identity matrices
-            for (var ix = -1; ix <= 1; ix++) {
-                for (var iy = -1; iy <= 1; iy++) {
-                    for (var iz = -1; iz <= 1; iz++) {
-                        cubeletPosition[ix+1][iy+1][iz+1] = vec4(ix,iy,iz,1); // need this?
-                        cubeletMatrix[ix+1][iy+1][iz+1] = mat4();
-                        cubeletOrientation[ix+1][iy+1][iz+1][0] = vec4(1,0,0,0);
-                        cubeletOrientation[ix+1][iy+1][iz+1][1] = vec4(0,1,0,0);
-                    }
-                }
-            }
-        }
-    };
-
-    document.getElementById("saveButton").onclick = function (e) {
-        var link = document.getElementById("downloadLink");
-        // For a less complicated save state, just use cubeletMatrix
-        // since cubeletPosition and cubeletOrientation can both be computed from that
-        // I'm lazy so I'll just store everything for now
-        link.href = makeTextFile(JSON.stringify([cubeletPosition,cubeletMatrix,cubeletOrientation]));
-        function makeTextFile(text) {
-            var data = new Blob([text], {type: 'text/plain'});
-            // If we are replacing a previously generated file we need to
-            // manually revoke the object URL to avoid memory leaks.
-            if (textFile !== null) {
-              window.URL.revokeObjectURL(textFile);
-            }
-            textFile = window.URL.createObjectURL(data);
-            return textFile;
-        }
-    };
-
-    document.getElementById('fileUploadButton').addEventListener('change', function(e) {
-        var file = e.target.files[0]; // FileList object, take only one file
-        var reader = new FileReader(); // Crete file reader to interpret file
-        // Change the file load event handler, i.e. what to do upon successful file loading
-        reader.onload = function(e) {
-            //console.log(e.target.result)
-            fileContents = JSON.parse(reader.result); // parse JSON text and store into array
-            var x, y, z, pos, mat, orient;
-            for (x = 0; x < 3; x++) {
-                for (y = 0; y < 3; y++) {
-                    for (z = 0; z < 3; z++) {
-                        pos = fileContents[0][x][y][z]; // element of cubeletPosition
-                        mat = fileContents[1][x][y][z]; // element of cubeletMatrix
-                        orient = fileContents[2][x][y][z];
-                        // Remap each element into a vec4/mat4
-                        fileContents[0][x][y][z] = vec4(pos[0], pos[1], pos[2], pos[3]);
-                        fileContents[1][x][y][z] = mat4(mat[0][0], mat[0][1], mat[0][2], mat[0][3],
-                                                        mat[1][0], mat[1][1], mat[1][2], mat[1][3],
-                                                        mat[2][0], mat[2][1], mat[2][2], mat[2][3],
-                                                        mat[3][0], mat[3][1], mat[3][2], mat[3][3]);
-                        fileContents[2][x][y][z][0] = vec4(orient[0][0], orient[0][1], orient[0][2], orient[0][3]);
-                        fileContents[2][x][y][z][1] = vec4(orient[1][0], orient[1][1], orient[1][2], orient[1][3]);
-                        //console.log("HUH",fileContents[0][x][y][z], fileContents[1][x][y][z]. fileContents[2][x][y][z][0],fileContents[2][x][y][z][1])
-                    }
-                }
-            }
-            isFileLoaded = true;
-        };
-        // Finally read the file as a text string
-        reader.readAsText(file);
-    });
-
-    // Make sure to reset the value so that whenever you click the choose file button
-    // the file gets reset (and if you cancel, isFileLoaded will stay false)
-    document.getElementById('fileUploadButton').onclick = function() {
-        this.value = null;
-        isFileLoaded = false;
-    }
-
-    document.getElementById("loadButton").onclick = function () {
-        if (!isFileLoaded) {
-            alert("Please select a cube state file.");
-        } else {
-            // Create a shallow copy of the file contents and store it in the cubeletMatrix array
-            // Now the loaded state should appear
-            cubeletPosition = fileContents[0].slice();
-            cubeletMatrix = fileContents[1].slice();
-            cubeletOrientation = fileContents[2].slice();
-        }
-    };
-
-    document.getElementById("randomButton").onclick = function(e) {
-        randomizeCube();
-    }
-
-    render();
-}
-
-// Function that generates a cubelet using quad
-// Need to specify center of cube
-function cubelet(v)
-{
-    quad( 2, 3, 7, 6, v); // right face
-    quad( 5, 4, 0, 1, v); // left face
-    quad( 6, 5, 1, 2, v); // top face
-    quad( 3, 0, 4, 7, v); // bottom face
-    quad( 1, 0, 3, 2, v); // front face
-    quad( 4, 5, 6, 7, v); // back face
-}
-
-// Function that generates a quad (face) of one cubelet
-// Need to specify the center of the cube (x, y, z)
-function quad(a, b, c, d, v)
-{
-    // Vertices of one cubelet (8 to choose from)
-    var vertices = [
-        vec4( -v, -v,  v, 1.0 ),
-        vec4( -v,  v,  v, 1.0 ),
-        vec4(  v,  v,  v, 1.0 ),
-        vec4(  v, -v,  v, 1.0 ),
-        vec4( -v, -v, -v, 1.0 ),
-        vec4( -v,  v, -v, 1.0 ),
-        vec4(  v,  v, -v, 1.0 ),
-        vec4(  v, -v, -v, 1.0 )
-    ];
-
-    // 6 vertices determine a face in a quad (2 triangles)
-    var indices = [ a, b, c, a, c, d ];
-    for ( var i = 0; i < indices.length; ++i ) {
-        // Push the vertices into the vertex array
-        points.push( vertices[indices[i]] );
-    }
-}
-
-// Function that generates colors for the entire cube
-function genColors()
-{
-    var x, y, z;
-    for (x = -1; x <= 1; x++) {
-        for (y = -1; y <= 1; y++) {
-            for (z = -1; z <= 1; z++) {
-                genColorsFace(2, 3, 7, 6, x, y, z); // right face
-                genColorsFace(5, 4, 0, 1, x, y, z); // left face
-                genColorsFace(6, 5, 1, 2, x, y, z); // top face
-                genColorsFace(3, 0, 4, 7, x, y, z); // bottom face
-                genColorsFace(1, 0, 3, 2, x, y, z); // front face
-                genColorsFace(4, 5, 6, 7, x, y, z); // back face
-            }
-        }
-    }
-
-    // Generates the colors for a face
-    // Also colors insides black
-    function genColorsFace(a, b, c, d, x, y, z) {
-
-        var vertexColors = [
-            vec4( 0.0, 0.0, 0.0, 1.0 ), // black (inside), index 0
-            vec4( 0.0, 1.0, 0.0, 1.0 ), // green (front), index 1
-            vec4( 1.0, 0.0, 0.0, 1.0 ), // red (right), index 2
-            vec4( 1.0, 1.0, 0.0, 1.0 ), // bottom (yellow), index 3
-            vec4( 0.0, 0.0, 1.0, 1.0 ), // blue (back), index 4
-            vec4( 1.0, 0.5, 0.0, 1.0 ), // orange (left), index 5
-            vec4( 1.0, 1.0, 1.0, 1.0 ) // white (top), index 6
-        ];
-
-        // Booleans that indicate what side of the whole Rubick's cube this quad is on
-        var rightRubix = (x == 1);
-        var leftRubix = (x == -1);
-        var topRubix = (y == 1);
-        var bottomRubix = (y == -1);
-        var frontRubix = (z == 1);
-        var backRubix = (z == -1);
-
-        // Booleans that indicate what face of the cublet this quad is on
-        var rightCublet = (a == 2);
-        var leftCublet = (a == 5);
-        var topCublet = (a == 6);
-        var bottomCublet = (a == 3);
-        var frontCublet = (a == 1);
-        var backCublet = (a == 4);
-
-        // Booleans that indicate the face of this quad
-        var right = rightRubix && rightCublet;
-        var left = leftRubix && leftCublet;
-        var top = topRubix && topCublet;
-        var bottom = bottomRubix && bottomCublet;
-        var front = frontRubix && frontCublet;
-        var back = backRubix && backCublet;
-
-        var indices = [ a, b, c, a, c, d ];
-        for ( var i = 0; i < indices.length; ++i ) {
-            //colors.push( vertexColors[a] ); // DEBUG, comment the rest of the loop out
-            if (right || left || top || bottom || front || back) {
-                colors.push( vertexColors[a] );
-            } else {
-                colors.push( vertexColors[0] );
-            }  
-        }
-    }
-}
-
-// Push rotation onto rotation queue
-function enqueueRotation(face, direction) {
-    var axis;
-    switch(face) {
-        case 'right':
-            axis = xAxis;
-            break;
-        case 'left':
-            axis = xAxis;
-            break;
-        case 'top':
-            axis = yAxis;
-            break;
-        case 'bottom':
-            axis = yAxis;
-            break;
-        case 'front':
-            axis = zAxis;
-            break;
-        case 'back':
-            axis = zAxis;
-            break;
-    }
-    rotationQueue.push([face,direction,axis]);
-    console.log("ENQUEUE", [face,direction,axis])
-
-    // Want to try start a rotation as soon as you push one on
-    dequeueRotation();
-}
-
-// Pop rotation from rotation queue
-function dequeueRotation() {
-    // If no rotations available or if a rotation is currently taking place, do nothing
-    if (rotationQueue.length == 0 || isRotating()) {
-        return;
-    }
-    // If a rotation is possible, pop off the rotation parameters
-    var nextRotation = rotationQueue.shift();
-    rotationFace = nextRotation[0];
-    rotationDir = nextRotation[1];
-    rotationAxis = nextRotation[2];
-    console.log("DEQUEUE", [rotationFace,rotationDir,rotationAxis])
-    // This triggers the render function to start drawing the rotation
-    rotationAngle = 0;
-    rotationSpeed = rotationSpeedTemp;
-}
-
-function render()
-{
-    gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-    // Set the camera position at each render (spherical coordinates)
-    eye = vec3(cameraRadius*Math.sin(PHI)*Math.sin(THETA),
-            cameraRadius*Math.cos(PHI),
-            cameraRadius*Math.sin(PHI)*Math.cos(THETA));
-
-    // World view matrix (involves translates and rotates for each cubelet)
-    // Initialize to identity matrix
-    worldViewMatrix = mat4();
-
-    // After releasing the mouse, want to produce a fading motion
-    if (!heldDown) {
-        dTHETA *= AMORTIZATION;
-        dPHI *= AMORTIZATION
-        if ((PHI > Math.PI && PHI < 2*Math.PI) || (PHI < 0 && PHI > -Math.PI)) {
-            up = vec3(0.0, -1.0, 0.0);
-            THETA = (THETA+dTHETA)%(2*Math.PI);
-        } else {
-            up = vec3(0.0, 1.0, 0.0);
-            THETA = (THETA-dTHETA)%(2*Math.PI);
-        }
-        PHI = (PHI-dPHI)%(2*Math.PI);
-    }
-    
-    // Model-view matrix
-    modelViewMatrix = mat4();
-    modelViewMatrix = mult(lookAt(eye, at, up), modelViewMatrix);
-    gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(modelViewMatrix));
-
-    // Projection matrix
-    projectionMatrix = perspective(fovy, aspect, near, far);
-    gl.uniformMatrix4fv(projectionMatrixLoc, false, flatten(projectionMatrix));
-
-    var i = 0; // used to partition color array into cubes to generate the right colors
-    var x, y, z; // starting positions
-    var curX, curY, curZ, curPos; // current positions
-
-    // Render each cube individually for rotations
-    for (x = -1; x <= 1; x++) {
-        for (y = -1; y <= 1; y++) {
-            for (z = -1; z <= 1; z++) {
-
-                // Translate cubelet to its proper place
-                worldViewMatrix = mult(translate(x*spacing,y*spacing,z*spacing), worldViewMatrix);
-
-                // Easier on eyes
-                curPos = cubeletPosition[x+1][y+1][z+1];
-                curX = curPos[0];
-                curY = curPos[1];
-                curZ = curPos[2];
-
-                // Check if rotation is occurring
-                // Want to only rotate for one turn, i.e. 90 degrees
-                if (isRotating()) {
-
-                    // Velocity includes speed and direction
-                    var rotationVelocity = rotationDir*rotationSpeed;
-
-                    var isRotatingCublet = false; // indicates that this cublet is being rotated, introduced to cut down repeated code
-
-                    // We check the current positions, not the starting ones
-                    if ((rotationFace == 'right' && curX == 1) || (rotationFace == 'left' && curX == -1)) {
-                        // Incremental rotation, modify the cumulative matrix
-                        cubeletMatrix[x+1][y+1][z+1] = mult(rotateX(rotationVelocity), cubeletMatrix[x+1][y+1][z+1]);
-                        isRotatingCublet = true;
-                    }
-
-                    else if ((rotationFace == 'top' && curY == 1) || (rotationFace == 'bottom' && curY == -1)) {
-                        cubeletMatrix[x+1][y+1][z+1] = mult(rotateY(rotationVelocity), cubeletMatrix[x+1][y+1][z+1]);
-                        isRotatingCublet = true;
-                    }
-
-                    else if ((rotationFace == 'front' && curZ == 1) || (rotationFace == 'back' && curZ == -1)) {
-                        cubeletMatrix[x+1][y+1][z+1] = mult(rotateZ(rotationVelocity), cubeletMatrix[x+1][y+1][z+1]);
-                        isRotatingCublet = true;
-                    }
-
-                    if (isRotatingCublet) {
-
-                        // Keep track of when angle reaches 90
-                        thetaCubelet[curX+1][curY+1][curZ+1][rotationAxis] += rotationVelocity;
-
-                        // If angle reached 90, a full turn is made, so record the new positions
-                        if (Math.abs(thetaCubelet[curX+1][curY+1][curZ+1][rotationAxis]) >= 90.0) {
-                            // Get the new cubelet position by multiplying the CUMULATIVE matrix to the ORIGINAL position
-                            cubeletPosition[x+1][y+1][z+1] = mult(cubeletMatrix[x+1][y+1][z+1], vec4(x,y,z,1));
-                            // Get the new cubelet orientation
-                            cubeletOrientation[x+1][y+1][z+1][0] = mult(cubeletMatrix[x+1][y+1][z+1], vec4(1,0,0,0));
-                            cubeletOrientation[x+1][y+1][z+1][1] = mult(cubeletMatrix[x+1][y+1][z+1], vec4(0,1,0,0));
-                            // Round the elements in the positions matrix once a full turn has been reached
-                            // Also round the elements in the rotation matrix, which is either 0, 1, or -1 (sin and cos of +-90)
-                            // Added rounding orientations
-                            for (var j = 0; j < 3; j++) {
-                                cubeletPosition[x+1][y+1][z+1][j] = Math.round(cubeletPosition[x+1][y+1][z+1][j]);
-                                for (var jj = 0; jj < 3; jj++) {
-                                    cubeletMatrix[x+1][y+1][z+1][j][jj] = Math.round(cubeletMatrix[x+1][y+1][z+1][j][jj]);
-                                }
-                                cubeletOrientation[x+1][y+1][z+1][0][j] = Math.round(cubeletOrientation[x+1][y+1][z+1][0][j]);
-                                cubeletOrientation[x+1][y+1][z+1][1][j] = Math.round(cubeletOrientation[x+1][y+1][z+1][1][j]);
-                            }
-                            thetaCubelet[curX+1][curY+1][curZ+1][rotationAxis] = 0;
-                        }
-                    }
-                }
-
-                // Now modify the world-view matrix to account for this additional cubelet rotation
-                worldViewMatrix = mult(cubeletMatrix[x+1][y+1][z+1], worldViewMatrix);
-                gl.uniformMatrix4fv(worldViewMatrixLoc, false, flatten(worldViewMatrix));
-
-                // Color array attribute buffer
-                var cBuffer = gl.createBuffer();
-                gl.bindBuffer( gl.ARRAY_BUFFER, cBuffer );
-                gl.bufferData( gl.ARRAY_BUFFER, flatten(colors.slice(i*NumVertices,(i+1)*NumVertices)), gl.STATIC_DRAW );
-
-                var vColor = gl.getAttribLocation( program, "vColor" );
-                gl.vertexAttribPointer(vColor, 4, gl.FLOAT, false, 0 , 0);
-                gl.enableVertexAttribArray(vColor);
-
-                // Vertex array attribute buffer
-                var vBuffer = gl.createBuffer();
-                gl.bindBuffer( gl.ARRAY_BUFFER, vBuffer );
-                gl.bufferData( gl.ARRAY_BUFFER, flatten(points), gl.STATIC_DRAW );
-
-                var vPosition = gl.getAttribLocation( program, "vPosition" );
-                gl.vertexAttribPointer( vPosition, 4, gl.FLOAT, false, 0, 0 );
-                gl.enableVertexAttribArray( vPosition );
-
-                // Draw out the vertices
-                gl.drawArrays( gl.TRIANGLES, 0, NumVertices );
-
-                worldViewMatrix = mat4();
-
-                i += 1;
-            }
-        }
-    }
-
-    // Increment rotation angle after all the desired cubelets have been rotated
-    // Want to only rotate for one turn, i.e. 90 degrees
-    if (isRotating()) {
-        rotationAngle += rotationSpeed;
-        // Now check if full turn has been reached, if so then dequeue the next rotation
-        // This will continue to dequeue until the queue is empty
-        if (!isRotating()) {
-            dequeueRotation();
-           
-        }
-    } else {
-        // If in stationary state, check if Rubik's cube is solved
-        displaySolved();
-    }
-
-    requestAnimFrame( render );
-}
-
-// Randomize the cube for a certain amount of rotate steps, makes use of setInterval
-// Customizable delay for different rotation speeds
-// Could also use a queue in the render function
-function randomizeCube() {
-
-    // Get the total number of steps
-    var steps = document.getElementById("randomStepCount").value;
-
-    // Check is input is valid
-    if(isNaN(steps) || steps == 0) {
-        return;
-    }
-
-    // Randomize button; want to disable it when randomize is still occuring
-    var btn = document.getElementById("randomButton");
-    btn.disabled = true;
-    
-    for (var i = 0; i < steps; i++) {
-        randomizedRotate();
-    }
-
-    // Enable button once randomize is done
-    btn.disabled = false;
-
-    // Rotate a random face of the cube in a random direction
-    function randomizedRotate() {
-
-        var faces = ['right','left','top','bottom','front','back'];
-        var directions = [-1, 1];
-
-        // Pick a random index from each of the above arrays
-        var randFace = faces[Math.floor(Math.random()*faces.length)];
-        var randDir = directions[Math.floor(Math.random()*directions.length)];
-        enqueueRotation(randFace, randDir);
-    }
-}
-
-// Checks if arrays are equal
-function isArrayEqual(a, b) {
-    if (a === b) return true;
-    if (a == null || b == null) return false;
-    if (a.length != b.length) return false;
-
-    for (var i = 0; i < a.length; ++i) {
-        if (a[i] != b[i]) return false;
-    }
-    return true;
-}
-
-// Checks if orientations are equal
-function isOrientationEqual(face1, face2) {
-    return (isArrayEqual(face1[0],face2[0]) && isArrayEqual(face1[1],face2[1]));
-}
-
-// Checks if Rubix cube is solved
-function isSolved() {
-    var reference = cubeletOrientation[0][0][0];
-    return (
-            isOrientationEqual(cubeletOrientation[0][0][1], reference) &&
-            isOrientationEqual(cubeletOrientation[0][0][2], reference) &&
-            isOrientationEqual(cubeletOrientation[0][1][0], reference) &&
-            isOrientationEqual(cubeletOrientation[0][1][1], reference) &&
-            isOrientationEqual(cubeletOrientation[0][1][2], reference) &&
-            isOrientationEqual(cubeletOrientation[0][2][0], reference) &&
-            isOrientationEqual(cubeletOrientation[0][2][1], reference) &&
-            isOrientationEqual(cubeletOrientation[0][2][2], reference) &&
-
-            isOrientationEqual(cubeletOrientation[1][0][0], reference) &&
-            isOrientationEqual(cubeletOrientation[1][0][1], reference) &&
-            isOrientationEqual(cubeletOrientation[1][0][2], reference) &&
-            isOrientationEqual(cubeletOrientation[1][1][0], reference) &&
-            isOrientationEqual(cubeletOrientation[1][1][1], reference) &&
-            isOrientationEqual(cubeletOrientation[1][1][2], reference) &&
-            isOrientationEqual(cubeletOrientation[1][2][0], reference) &&
-            isOrientationEqual(cubeletOrientation[1][2][1], reference) &&
-            isOrientationEqual(cubeletOrientation[1][2][2], reference) &&
-
-            isOrientationEqual(cubeletOrientation[2][0][0], reference) &&
-            isOrientationEqual(cubeletOrientation[2][0][1], reference) &&
-            isOrientationEqual(cubeletOrientation[2][0][2], reference) &&
-            isOrientationEqual(cubeletOrientation[2][1][0], reference) &&
-            isOrientationEqual(cubeletOrientation[2][1][1], reference) &&
-            isOrientationEqual(cubeletOrientation[2][1][2], reference) &&
-            isOrientationEqual(cubeletOrientation[2][2][0], reference) &&
-            isOrientationEqual(cubeletOrientation[2][2][1], reference) &&
-            isOrientationEqual(cubeletOrientation[2][2][2], reference)
-            );
-}
-
-// Checks if Rubik's cube is solved and displays appropriate message
-function displaySolved() {
-    if (isSolved()) {
-      document.getElementById("solvedMessage").innerHTML = "Solved: YES";
-    } else {
-      document.getElementById("solvedMessage").innerHTML = "Solved: NO";
-    }
-}
-
-*/
