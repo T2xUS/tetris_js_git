@@ -51,6 +51,9 @@ var colorTable = {
     'black'     : vec4( 0.0, 0.0, 0.0, 1.0 ),
     'white'     : vec4( 1.0, 1.0, 1.0, 1.0 ),
     'gray'      : vec4( 0.0, 0.0, 0.0, 0.5 ),
+    'purple'    : vec4( 0.3, 0.0, 0.3, 0.7 ),
+    'olive'     : vec4( 0.0, 0.7, 0.0, 1.0 ),
+    'pink'      : vec4( 1.0, 0.5, 0.6, 0.75 )
 };
 
 // --------------------------------
@@ -69,14 +72,31 @@ var sidelen = 2*vertexPos;
 // Spacing between cubelets
 var spacing = 1.1;
 
-// Vertex buffer used for rendering
+// Vertex array used for rendering
 // 0-36 is cubie
 // 36-60 is cubie outline
 // 60-78 is grid square
 var points = [];
 
-// Color buffer
-//var colors = [];
+// Color array
+// 36-78 are a fixed color
+// Only need to reload 36-60 every time you render
+var colors = new Array(114);
+
+// Store line colors in color array
+for (var i = 36; i < 60; ++i) {
+    colors[i] = colorTable['black'];    
+}
+
+// Store grid colors in color array
+for (var i = 60; i < 78; ++i) {
+    colors[i] = colorTable['white'];   
+}
+
+// Store locked cubie colors
+for (var i = 78; i < 114; ++i) {
+    colors[i] = colorTable['gray'];
+}
 
 // --------------------------------
 // Grid boundaries
@@ -372,11 +392,13 @@ function GridSquare(x, y, z) {
     // Places grid square where it should be in the grid
     this.placementMatrix = translate(x*spacing, y*spacing, z*spacing);
 
+    /*
     // Grid color, white for now
     this.colors = [];
     for (var i = 0; i < 78; i++) {
         this.colors.push(colorTable['white']);   
     }
+    */
 
     // World matrix is just the placement matrix, don't need to do anything else with grid
     this.getWorldMatrix = function() {
@@ -453,7 +475,7 @@ var gridBackWall = new GridBackWall();
 // Cubie class
 // -------------------------
 
-function Cubie(x, y, z, color) {
+function Cubie(x, y, z) {//, color) {
 
     // Starting position (after placement) before translations and rotations
     this.origPosition = vec4(x, y, z, 1.0);
@@ -480,16 +502,20 @@ function Cubie(x, y, z, color) {
     this.theta = [0,0,0];
 
     // Cubie's colors based on Tetromino type
+    /*
     this.colors = [];
     for (var i = 0; i < NumVertices; i++) {
         this.colors.push(colorTable[color]);    
     }
+    */
 
     // Cubie's outline colors
+    /*
     this.lineColors = [];
     for (var i = 0; i < 60; i++) {
         this.lineColors.push(colorTable['black']);    
     }
+    */
 
     this.getWorldMatrix = function() {
         var worldMatrix = mat4();
@@ -736,46 +762,74 @@ function Tetromino() {
         this.cubies = [];
     }
 
+    // Color for this Tetromino
+    this.color = '';
+
     // Previous piece, initialized to nothing
     this.previousPiece = '';
 
     // Initialize Tetromino based on type
     this.init = function(type) {
         if (type == 'I') {
-            this.cubies.push(new Cubie(-2,0,0,'cyan'));
-            this.cubies.push(new Cubie(-1,0,0,'cyan'));
-            this.cubies.push(new Cubie(-0,0,0,'cyan'));
-            this.cubies.push(new Cubie(1,0,0,'cyan'));
+            this.color = 'cyan';
+            this.cubies.push(new Cubie(-2,0,0));//,'cyan'));
+            this.cubies.push(new Cubie(-1,0,0));//,'cyan'));
+            this.cubies.push(new Cubie(-0,0,0));//,'cyan'));
+            this.cubies.push(new Cubie(1,0,0));//,'cyan'));
         } else if (type == 'O') {
-            this.cubies.push(new Cubie(-1,0,0,'yellow'));
-            this.cubies.push(new Cubie(0,0,0,'yellow'));
-            this.cubies.push(new Cubie(-1,-1,0,'yellow'));
-            this.cubies.push(new Cubie(0,-1,0,'yellow'));
+            this.color = 'yellow';
+            this.cubies.push(new Cubie(-1,0,0));//,'yellow'));
+            this.cubies.push(new Cubie(0,0,0));//,'yellow'));
+            this.cubies.push(new Cubie(-1,-1,0));//,'yellow'));
+            this.cubies.push(new Cubie(0,-1,0));//,'yellow'));
         } else if (type == 'T') {
-            this.cubies.push(new Cubie(-1,0,0,'magenta'));
-            this.cubies.push(new Cubie(0,0,0,'magenta'));
-            this.cubies.push(new Cubie(1,0,0,'magenta'));
-            this.cubies.push(new Cubie(0,-1,0,'magenta'));
+            this.color = 'magenta';
+            this.cubies.push(new Cubie(-1,0,0));//,'magenta'));
+            this.cubies.push(new Cubie(0,0,0));//,'magenta'));
+            this.cubies.push(new Cubie(1,0,0));//,'magenta'));
+            this.cubies.push(new Cubie(0,-1,0));//,'magenta'));
         } else if (type == 'J') {
-            this.cubies.push(new Cubie(-1,0,0,'blue'));
-            this.cubies.push(new Cubie(0,0,0,'blue'));
-            this.cubies.push(new Cubie(1,0,0,'blue'));
-            this.cubies.push(new Cubie(1,-1,0,'blue'));
+            this.color = 'blue';
+            this.cubies.push(new Cubie(-1,0,0));//,'blue'));
+            this.cubies.push(new Cubie(0,0,0));//,'blue'));
+            this.cubies.push(new Cubie(1,0,0));//,'blue'));
+            this.cubies.push(new Cubie(1,-1,0));//,'blue'));
         } else if (type == 'L') {
-            this.cubies.push(new Cubie(-1,0,0,'orange'));
-            this.cubies.push(new Cubie(0,0,0,'orange'));
-            this.cubies.push(new Cubie(1,0,0,'orange'));
-            this.cubies.push(new Cubie(-1,-1,0,'orange'));
+            this.color = 'orange';
+            this.cubies.push(new Cubie(-1,0,0));//,'orange'));
+            this.cubies.push(new Cubie(0,0,0));//,'orange'));
+            this.cubies.push(new Cubie(1,0,0));//,'orange'));
+            this.cubies.push(new Cubie(-1,-1,0));//,'orange'));
         } else if (type == 'S') {
-            this.cubies.push(new Cubie(0,0,0,'green'));
-            this.cubies.push(new Cubie(1,0,0,'green'));
-            this.cubies.push(new Cubie(-1,-1,0,'green'));
-            this.cubies.push(new Cubie(0,-1,0,'green'));
+            this.color = 'green';
+            this.cubies.push(new Cubie(0,0,0));//,'green'));
+            this.cubies.push(new Cubie(1,0,0));//,'green'));
+            this.cubies.push(new Cubie(-1,-1,0));//,'green'));
+            this.cubies.push(new Cubie(0,-1,0));//,'green'));
         } else if (type == 'Z') {
-            this.cubies.push(new Cubie(-1,0,0,'red'));
-            this.cubies.push(new Cubie(0,0,0,'red'));
-            this.cubies.push(new Cubie(0,-1,0,'red'));
-            this.cubies.push(new Cubie(1,-1,0,'red'));
+            this.color = 'red';
+            this.cubies.push(new Cubie(-1,0,0));//,'red'));
+            this.cubies.push(new Cubie(0,0,0));//,'red'));
+            this.cubies.push(new Cubie(0,-1,0));//,'red'));
+            this.cubies.push(new Cubie(1,-1,0));//,'red'));
+        } else if (type == 'Tvar') {
+            this.color = 'purple';
+            this.cubies.push(new Cubie(0,0,0));//,'purple'));
+            this.cubies.push(new Cubie(0,-1,0));//,'purple'));
+            this.cubies.push(new Cubie(0,-1,1));//,'purple'));
+            this.cubies.push(new Cubie(1,-1,0));//,'purple'));
+        } else if (type == 'Svar') {
+            this.color = 'olive';
+            this.cubies.push(new Cubie(0,0,0));//,'olive'));
+            this.cubies.push(new Cubie(1,0,0));//,'olive'));
+            this.cubies.push(new Cubie(0,-1,1));//,'olive'));
+            this.cubies.push(new Cubie(0,-1,0));//,'olive'));
+        } else if (type == 'Zvar') {
+            this.color = 'pink';
+            this.cubies.push(new Cubie(-1,0,0));//,'pink'));
+            this.cubies.push(new Cubie(0,0,0));//,'pink'));
+            this.cubies.push(new Cubie(0,-1,0));//,'pink'));
+            this.cubies.push(new Cubie(0,-1,1));//,'pink'));
         }
         // Place Tetromino at the top
         this.cubies.forEach(function(cubie) {
@@ -1079,7 +1133,7 @@ function Tetromino() {
     }
 }
 
-var tetrominoTable = ['I','O','T','J','L','S','Z'];
+var tetrominoTable = ['I','O','T','J','L','S','Z','Tvar','Svar','Zvar'];
 
 // Current Tetromino piece
 // Initialize to placeholder but not actually rendered
@@ -1101,6 +1155,20 @@ var spawnTetromino = function() {
     } else { // SPAM I BLOCKS FOR DEMO
     currTetromino.init("I");
     }
+
+    // Reload color buffer for new Tetromino
+    // Want to only change the first 36 colors for this Tetromino
+    for (var i = 0; i < NumVertices; ++i) {
+        colors[i] = colorTable[currTetromino.color];
+    }
+
+    var cBuffer = gl.createBuffer();
+    gl.bindBuffer( gl.ARRAY_BUFFER, cBuffer );
+    gl.bufferData( gl.ARRAY_BUFFER, flatten(colors), gl.STATIC_DRAW );
+
+    var vColor = gl.getAttribLocation( program, "vColor" );
+    gl.vertexAttribPointer( vColor, 4, gl.FLOAT, false, 0, 0 );
+    gl.enableVertexAttribArray( vColor );
 }
 
 // -------------------------
@@ -1443,13 +1511,15 @@ window.onload = function init()
     gl.useProgram( program );
 
     // Push in vertices to vertex buffer
-    // 0-36 is cubie
+    // 0-36 is Tetromino cubie
     // 36-60 is cubie outline
     // 60-78 is grid square
+    // 78-114 is locked cubie
     cubelet(vertexPos);
     GridQuad( 3, 0, 4, 7, vertexPos); // bottom
     GridQuad( 5, 4, 0, 1, vertexPos); // left
     GridQuad( 4, 5, 6, 7, vertexPos); // back
+    cubelet(vertexPos);
 
     // Load the vertex buffers
     var vBuffer = gl.createBuffer();
@@ -1461,7 +1531,6 @@ window.onload = function init()
     gl.enableVertexAttribArray( vPosition );
 
     // Load the color buffers
-    /*
     var cBuffer = gl.createBuffer();
     gl.bindBuffer( gl.ARRAY_BUFFER, cBuffer );
     gl.bufferData( gl.ARRAY_BUFFER, flatten(colors), gl.STATIC_DRAW );
@@ -1469,7 +1538,6 @@ window.onload = function init()
     var vColor = gl.getAttribLocation( program, "vColor" );
     gl.vertexAttribPointer( vColor, 4, gl.FLOAT, false, 0, 0 );
     gl.enableVertexAttribArray( vColor );
-    */
 
     // Set up uniforms
     worldViewMatrixLoc = gl.getUniformLocation(program, "worldViewMatrix");
@@ -1542,15 +1610,8 @@ function render()
         worldViewMatrix = mult(square.getWorldMatrix(), worldViewMatrix);
         gl.uniformMatrix4fv(worldViewMatrixLoc, false, flatten(worldViewMatrix));
 
-        // Grid color
-        var cBuffer = gl.createBuffer();
-        gl.bindBuffer( gl.ARRAY_BUFFER, cBuffer );
-        gl.bufferData( gl.ARRAY_BUFFER, flatten(square.colors), gl.STATIC_DRAW );
-
-        var vColor = gl.getAttribLocation( program, "vColor" );
-        gl.vertexAttribPointer( vColor, 4, gl.FLOAT, false, 0, 0 );
-        gl.enableVertexAttribArray( vColor );
-
+        // Draw arrays
+        // 60-66 is grid bottom square, white
         gl.drawArrays(gl.TRIANGLES, 60, 6);
 
         // Reset world view matrix
@@ -1563,14 +1624,7 @@ function render()
         worldViewMatrix = mult(square.getWorldMatrix(), worldViewMatrix);
         gl.uniformMatrix4fv(worldViewMatrixLoc, false, flatten(worldViewMatrix));
 
-        var cBuffer = gl.createBuffer();
-        gl.bindBuffer( gl.ARRAY_BUFFER, cBuffer );
-        gl.bufferData( gl.ARRAY_BUFFER, flatten(square.colors), gl.STATIC_DRAW );
-
-        var vColor = gl.getAttribLocation( program, "vColor" );
-        gl.vertexAttribPointer( vColor, 4, gl.FLOAT, false, 0, 0 );
-        gl.enableVertexAttribArray( vColor );
-
+        // Vertices 66-72 is grid left wall square, white
         gl.drawArrays(gl.TRIANGLES, 66, 6);
 
         worldViewMatrix = mat4();
@@ -1582,14 +1636,7 @@ function render()
         worldViewMatrix = mult(square.getWorldMatrix(), worldViewMatrix);
         gl.uniformMatrix4fv(worldViewMatrixLoc, false, flatten(worldViewMatrix));
 
-        var cBuffer = gl.createBuffer();
-        gl.bindBuffer( gl.ARRAY_BUFFER, cBuffer );
-        gl.bufferData( gl.ARRAY_BUFFER, flatten(square.colors), gl.STATIC_DRAW );
-
-        var vColor = gl.getAttribLocation( program, "vColor" );
-        gl.vertexAttribPointer( vColor, 4, gl.FLOAT, false, 0, 0 );
-        gl.enableVertexAttribArray( vColor );
-
+        // Vertices 72-78 is grid back wall square, white
         gl.drawArrays(gl.TRIANGLES, 72, 6);
 
         worldViewMatrix = mat4();
@@ -1630,15 +1677,8 @@ function render()
 
         worldViewMatrix = mult(cubie.getWorldMatrix(), worldViewMatrix);
         gl.uniformMatrix4fv(worldViewMatrixLoc, false, flatten(worldViewMatrix));
- 
-        var cBuffer = gl.createBuffer();
-        gl.bindBuffer( gl.ARRAY_BUFFER, cBuffer );
-        gl.bufferData( gl.ARRAY_BUFFER, flatten(cubie.colors), gl.STATIC_DRAW );
 
-        var vColor = gl.getAttribLocation( program, "vColor" );
-        gl.vertexAttribPointer( vColor, 4, gl.FLOAT, false, 0, 0 );
-        gl.enableVertexAttribArray( vColor );
-
+        // Vertices 0-36 is Tetromino cubie, color is reloaded when spawning Tetromino
         gl.drawArrays(gl.TRIANGLES, 0, NumVertices);
 
         worldViewMatrix = mat4();
@@ -1657,15 +1697,8 @@ function render()
             worldViewMatrix = mult(cubie.getWorldMatrix(), worldViewMatrix);
             gl.uniformMatrix4fv(worldViewMatrixLoc, false, flatten(worldViewMatrix));
 
-            var cBuffer = gl.createBuffer();
-            gl.bindBuffer( gl.ARRAY_BUFFER, cBuffer );
-            gl.bufferData( gl.ARRAY_BUFFER, flatten(lockedCubies.colors), gl.STATIC_DRAW );
-
-            var vColor = gl.getAttribLocation( program, "vColor" );
-            gl.vertexAttribPointer( vColor, 4, gl.FLOAT, false, 0, 0 );
-            gl.enableVertexAttribArray( vColor );
-
-            gl.drawArrays(gl.TRIANGLES, 0, NumVertices);
+            // Vertices 78-114 is locked cubie, color is gray
+            gl.drawArrays(gl.TRIANGLES, 78, NumVertices);
 
             worldViewMatrix = mat4();
         });
@@ -1681,15 +1714,8 @@ function render()
         worldViewMatrix = mult(cubie.getWorldMatrix(), worldViewMatrix);
         gl.uniformMatrix4fv(worldViewMatrixLoc, false, flatten(worldViewMatrix));
 
-        var cBuffer = gl.createBuffer();
-        gl.bindBuffer( gl.ARRAY_BUFFER, cBuffer );
-        gl.bufferData( gl.ARRAY_BUFFER, flatten(cubie.lineColors), gl.STATIC_DRAW );
-
-        var vColor = gl.getAttribLocation( program, "vColor" );
-        gl.vertexAttribPointer( vColor, 4, gl.FLOAT, false, 0, 0 );
-        gl.enableVertexAttribArray( vColor );
-
         // Draw lines instead of triangles
+        // Vertices 36-60 is cubie outline, color is black
         gl.drawArrays(gl.LINES, 36, 24);
 
         worldViewMatrix = mat4();
@@ -1703,14 +1729,7 @@ function render()
             worldViewMatrix = mult(cubie.getWorldMatrix(), worldViewMatrix);
             gl.uniformMatrix4fv(worldViewMatrixLoc, false, flatten(worldViewMatrix));
 
-            var cBuffer = gl.createBuffer();
-            gl.bindBuffer( gl.ARRAY_BUFFER, cBuffer );
-            gl.bufferData( gl.ARRAY_BUFFER, flatten(cubie.lineColors), gl.STATIC_DRAW );
-
-            var vColor = gl.getAttribLocation( program, "vColor" );
-            gl.vertexAttribPointer( vColor, 4, gl.FLOAT, false, 0, 0 );
-            gl.enableVertexAttribArray( vColor );
-
+            // Vertices 36-60 is cubie outline, color is black
             gl.drawArrays(gl.LINES, 36, 24);
 
             worldViewMatrix = mat4();
