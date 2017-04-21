@@ -102,31 +102,31 @@ for (var i = 78; i < 114; ++i) {
 // Grid boundaries
 // --------------------------------
 
-// Default 6x14x6
+// Default 5x14x5
 var grid_Xp = 2;
-var grid_Xn = -3;
+var grid_Xn = -2;
 var grid_Yp = 6;
 var grid_Yn = -7;
 var grid_Zp = 2;
-var grid_Zn = -3;
+var grid_Zn = -2;
 
-// Small 4x9x4
+// Small 4x11x4
 /*
 var grid_Xp = 1;
 var grid_Xn = -2;
-var grid_Yp = 4;
-var grid_Yn = -4;
+var grid_Yp = 5;
+var grid_Yn = -5;
 var grid_Zp = 1;
 var grid_Zn = -2;
 */
 
-// Large 7x16x7
+// Large 6x17x6
 /*
-var grid_Xp = 3;
+var grid_Xp = 2;
 var grid_Xn = -3;
-var grid_Yp = 7;
+var grid_Yp = 8;
 var grid_Yn = -8;
-var grid_Zp = 3;
+var grid_Zp = 2;
 var grid_Zn = -3;
 */
 
@@ -1452,30 +1452,30 @@ function initEventListeners() {
         var gridSize = parseInt(e.target.value);
         switch(gridSize) {
             case 0:
-                // 4x9x4
+                // 4x11x4
                 grid_Xp = 1;
                 grid_Xn = -2;
-                grid_Yp = 4;
-                grid_Yn = -4;
+                grid_Yp = 5;
+                grid_Yn = -5;
                 grid_Zp = 1;
                 grid_Zn = -2;
                 break;
             case 1:
-                // 6x14x6
+                // 5x14x5
                 grid_Xp = 2;
-                grid_Xn = -3;
+                grid_Xn = -2;
                 grid_Yp = 6;
                 grid_Yn = -7;
                 grid_Zp = 2;
-                grid_Zn = -3;
+                grid_Zn = -2;
                 break;
             case 2:
-                // 7x16x7
-                grid_Xp = 3;
+                // 6x17x6
+                grid_Xp = 2;
                 grid_Xn = -3;
-                grid_Yp = 7;
+                grid_Yp = 8;
                 grid_Yn = -8;
-                grid_Zp = 3;
+                grid_Zp = 2;
                 grid_Zn = -3;
                 break;
         }
