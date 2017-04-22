@@ -1341,7 +1341,7 @@ function initEventListeners() {
             if (dPHI > 0) {
                 PHI = radians(-181);
             } else if (dPHI < 0) {
-                PHI = radians(179);
+                PHI = radians(-179);
             }
         }
 
