@@ -1310,6 +1310,41 @@ function initEventListeners() {
         dTHETA = (e.pageX-startX)*2*Math.PI/canvas.width;
         dPHI = (e.pageY-startY)*2*Math.PI/canvas.height;
 
+        // Subtract PHI first, then check for discontinuity
+        PHI = (PHI-dPHI)%(2*Math.PI);
+
+        // Jump over discontinuity
+        // Want to avoid the region (179,181) for discontinuity at 180
+        // When approaching the discontinuity from above (dPHI > 0), jump to 179
+        // and keep up vector positive (because 179 is before the flip)
+        // Up vector is negated when approaching discontinuity from below since 181 is post-flip
+        if (degrees(PHI) < 181 && degrees(PHI) > 179) {
+            if (dPHI > 0) {
+                PHI = radians(179);
+            } else if (dPHI < 0) {
+                PHI = radians(181);
+            }
+        }
+
+        // Similar idea with discontinuity at 0
+        // This time, negate up vector when approaching from above and vice versa
+        if (degrees(PHI) < 1 && degrees(PHI) > -1) {
+            if (dPHI > 0) {
+                PHI = radians(-1);
+            } else if (dPHI < 0) {
+                PHI = radians(1);
+            }
+        }
+
+        // Disconuity at -180
+        if (degrees(PHI) < -179 && degrees(PHI) > -181) {
+            if (dPHI > 0) {
+                PHI = radians(-181);
+            } else if (dPHI < 0) {
+                PHI = radians(179);
+            }
+        }
+
         // From degrees(PHI) E [-180, 0] U [180, 360], the up vector begins to point in
         // the opposite direction and the cube flips to preserve the up direction.
         // We don't want this to happen, so we flip the up vector when this happens
@@ -1317,19 +1352,10 @@ function initEventListeners() {
         if ((PHI > Math.PI && PHI < 2*Math.PI) || (PHI < 0 && PHI > -Math.PI)) {
             up = vec3(0.0, -1.0, 0.0);
             THETA = (THETA+dTHETA)%(2*Math.PI);
-            // Jump over discontinuity
-            if (THETA == Math.PI) {
-                THETA += radians(5);
-            }
         } else {
             up = vec3(0.0, 1.0, 0.0);
             THETA = (THETA-dTHETA)%(2*Math.PI);
-            // Jump over discontinuity
-            if (THETA == Math.PI) {
-                THETA -= radians(5);
-            }
         }
-        PHI = (PHI-dPHI)%(2*Math.PI);
 
         // Save ending position as next starting position
         startX = e.pageX;
