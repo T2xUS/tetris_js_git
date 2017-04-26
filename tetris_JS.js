@@ -1,14 +1,6 @@
-// Next steps:
-// Freeze bug, idk why (note: this happened in Rubix too)
-// Improve speed in general (LOADED VERTEX BUFFERS ONLY ONCE)
-// Deal with game over condition (DONE)
-// Differentiate spawn spot from game spot (DONE)
-// DISONTINUiTY ASK XL
-// Score jump skipping levels?
-
 /*
-Yesterday's progress:
-- Loaded vertexes only in once
+Progress:
+- Loaded vertices only in once
 - Implemented game over state when cube reaches the top and some bugs regarding that
 - Added a lot of buttons for starting, pausing, resetting, and ending the game
 - Added slider to customize grid size
@@ -19,12 +11,14 @@ Yesterday's progress:
 - Each level has a different falling speed
 - Level is proportional to score
 - Display messages for game over, victory, game end, and block clears from singles to tetrises
+- Fixed the freezing issues and lag by reloading buffer only for new Tetrominos
+- Fixed the discontinuity with rotating the camera eye
+- Added light source directly over the playing field
+- Bug fix: Reset gravity clock every time you drop a piece
 
-To do:
-- Fix the periodic freezing bug (probably impossible)
-- Fix the discontinuity with rotating the camera eye (ask Xiangling)
-- Other potential speed improvements (how to load grid only once?)
-- Add texture and lighting (optional for now)
+Future work:
+- Lower grid opacity?
+- Texturing
 - Make cubes EXPLODE when cleared, making add a special animation for dropping cubes as well
 */
 
@@ -50,10 +44,10 @@ var colorTable = {
     'green'     : vec4( 0.0, 1.0, 0.0, 1.0 ),
     'black'     : vec4( 0.0, 0.0, 0.0, 1.0 ),
     'white'     : vec4( 1.0, 1.0, 1.0, 1.0 ),
-    'gray'      : vec4( 0.0, 0.0, 0.0, 0.5 ),
-    'purple'    : vec4( 0.3, 0.0, 0.3, 0.7 ),
-    'olive'     : vec4( 0.0, 0.7, 0.0, 1.0 ),
-    'pink'      : vec4( 1.0, 0.5, 0.6, 0.75 )
+    'gray'      : vec4( 0.5, 0.5, 0.5, 1.0 ),
+    'purple'    : vec4( 0.5, 0.0, 0.5, 1.0 ),
+    'olive'     : vec4( 0.0, 0.4, 0.0, 1.0 ),
+    'pink'      : vec4( 1.0, 0.5, 0.6, 1.0 )
 };
 
 // --------------------------------
@@ -98,6 +92,9 @@ for (var i = 78; i < 114; ++i) {
     colors[i] = colorTable['gray'];
 }
 
+// Normals array
+var normals = [];
+
 // --------------------------------
 // Grid boundaries
 // --------------------------------
@@ -129,6 +126,20 @@ var grid_Yn = -8;
 var grid_Zp = 2;
 var grid_Zn = -3;
 */
+
+// --------------------------------
+// Lighting and Texturing
+// --------------------------------
+
+var lightPosition = vec4( 0.0, 10.0, 0.0, 0.0 );
+var lightAmbient = vec4( 0.7, 0.7, 0.7, 1.0 );
+var lightDiffuse = vec4( 1.0, 1.0, 1.0, 1.0 );
+var lightSpecular = vec4( 1.0, 1.0, 1.0, 1.0 );
+
+var materialAmbient = vec4( 0.7, 0.7, 0.7, 1.0 );
+var materialDiffuse = vec4( 1.0, 1.0, 1.0, 1.0 );
+var materialSpecular = vec4( 1.0, 1.0, 1.0, 1.0 );
+var materialShininess = 100.0;
 
 // --------------------------------
 // Variables pertaining to viewing
@@ -310,11 +321,18 @@ function quad(a, b, c, d, v)
         vec4(  v, -v, -v, 1.0 )
     ];
 
+    // Normals
+    var t1 = subtract(vertices[b], vertices[a]);
+    var t2 = subtract(vertices[c], vertices[b]);
+    var normal = vec3(cross(t1, t2));
+
     // 6 vertices determine a face in a quad (2 triangles)
     var indices = [ a, b, c, a, c, d ];
     for ( var i = 0; i < indices.length; ++i ) {
         // Push the vertices into the vertex array
         points.push( vertices[indices[i]] );
+        // Push the normals into the array
+        normals.push(normal);
     }
 }
 
@@ -332,9 +350,14 @@ function quadOutline(a, b, c, d, v)
         vec4(  v, -v, -v, 1.0 )
     ];
 
+    var t1 = subtract(vertices[b], vertices[a]);
+    var t2 = subtract(vertices[c], vertices[b]);
+    var normal = vec3(cross(t1, t2));
+
     var indices = [ a, b, c, d ];
     for ( var i = 0; i < indices.length; ++i ) {
         points.push( vertices[indices[i]] );
+        normals.push(normal);
     }
 }
 
@@ -377,9 +400,14 @@ function GridQuad(a, b, c, d, v)
         vec4(  v, -v, -v, 1.0 )
     ];
 
+    var t1 = subtract(vertices[b], vertices[a]);
+    var t2 = subtract(vertices[c], vertices[b]);
+    var normal = vec3(cross(t1, t2));
+
     var indices = [ a, b, c, a, c, d ];
     for ( var i = 0; i < indices.length; ++i ) {
         points.push( vertices[indices[i]] );
+        normals.push(normal);
     }
 }
 
@@ -673,8 +701,10 @@ function Locked() {
         // Check if level increased (after every score increase)
         var newGameLevel = Math.floor(gameScore / levelJumpScore) + 1;
         if (newGameLevel > gameLevel) {
+            gameLevel = newGameLevel;
+            updateGameLevel();
             // If you beat level 10, you win the game
-            if (newGameLevel == 11) {
+            if (newGameLevel > 10) {
                 currTetromino.stopFalling();
                 displayGameMessage("You win!");
                 isGameOver = true;
@@ -687,13 +717,13 @@ function Locked() {
                 // Reenable sliders
                 document.getElementById('gridSizeSlider').disabled = false;
                 document.getElementById('levelSlider').disabled = false;
+                // Reset level and speed
+                gameLevel = 1;
+                fallInterval = fallIntervals[1];
                 return;
             }
-            gameLevel = newGameLevel;
-            updateGameLevel();
+            // Otherwise update the fall interval and keep going
             fallInterval = fallIntervals[gameLevel];
-            currTetromino.stopFalling();
-            currTetromino.startFalling(fallInterval);
         }
 
         // Display special message
@@ -709,6 +739,10 @@ function Locked() {
 
         // Reset lines cleared
         linesCleared = 0;
+
+        // Whenever a block is dropped / line is cleared, reset the clock
+        currTetromino.stopFalling();
+        currTetromino.startFalling(fallInterval);
     }
 
     // Check if game over after a new Tetromino is spawned
@@ -1085,7 +1119,6 @@ function Tetromino() {
 
     // Lock Tetrimino in place
     this.lock = function() {
-        //console.log("I AM LOCKING")
         // Add to locked cubes
         this.cubies.forEach(function(cubie) {
             var x = cubie.currPosition[0];
@@ -1096,9 +1129,16 @@ function Tetromino() {
         });
         // Check if rows need to be cleared
         lockedCubies.clearRows();
+        // If game is over due to win, end game
+        if (isGameOver) {
+            currTetromino.clear();
+            return;
+        }
         // Spawn a new Tetromino
-        // Later change it so that the same one can't be spawned consecutively
         spawnTetromino();
+        // Stop falling after drop to reset drop interval
+        //currTetromino.stopFalling();
+        //currTetromino.startFalling(fallInterval);
         // Check if new Tetromino will result in game over
         if (lockedCubies.gameOver()) {
             currTetromino.stopFalling();
@@ -1515,6 +1555,15 @@ window.onload = function init()
     GridQuad( 4, 5, 6, 7, vertexPos); // back
     cubelet(vertexPos);
 
+    // Load the normal buffers
+    var nBuffer = gl.createBuffer();
+    gl.bindBuffer( gl.ARRAY_BUFFER, nBuffer );
+    gl.bufferData( gl.ARRAY_BUFFER, flatten(normals), gl.STATIC_DRAW );
+
+    var vNormal = gl.getAttribLocation( program, "vNormal" );
+    gl.vertexAttribPointer( vNormal, 3, gl.FLOAT, false, 0, 0 );
+    gl.enableVertexAttribArray( vNormal );
+
     // Load the vertex buffers
     var vBuffer = gl.createBuffer();
     gl.bindBuffer( gl.ARRAY_BUFFER, vBuffer );
@@ -1558,6 +1607,23 @@ window.onload = function init()
 
     // Clear the game message
     resetGameMessage();
+
+    // Lighting
+
+    var ambientProduct = mult(lightAmbient, materialAmbient);
+    var diffuseProduct = mult(lightDiffuse, materialDiffuse);
+    var specularProduct = mult(lightSpecular, materialSpecular);
+
+    gl.uniform4fv(gl.getUniformLocation(program, "ambientProduct"),
+       flatten(ambientProduct));
+    gl.uniform4fv(gl.getUniformLocation(program, "diffuseProduct"),
+       flatten(diffuseProduct) );
+    gl.uniform4fv(gl.getUniformLocation(program, "specularProduct"),
+       flatten(specularProduct) );
+    gl.uniform4fv(gl.getUniformLocation(program, "lightPosition"),
+       flatten(lightPosition) );
+    gl.uniform1f(gl.getUniformLocation(program, "shininess"),
+        materialShininess);
 
     render();
 }
