@@ -1,28 +1,28 @@
 /*
-Progress:
-- Loaded vertices only in once
-- Implemented game over state when cube reaches the top and some bugs regarding that
-- Added a lot of buttons for starting, pausing, resetting, and ending the game
-- Added slider to customize grid size
-- Added slider to choose starting level
-- Made sure sliders can't be set during gameplay, and certain buttons are activated at certain time
-- Implemented hard drops with space
-- Implemented gravity so that block falls automatically, made sure this is deactivated when the game isn't active
-- Each level has a different falling speed
-- Level is proportional to score
-- Display messages for game over, victory, game end, and block clears from singles to tetrises
-- Fixed the freezing issues and lag by reloading buffer only for new Tetrominos
-- Fixed the discontinuity with rotating the camera eye
-- Added light source directly over the playing field
-- Bug fix: Reset gravity clock every time you drop a piece
-- Added ghost pieces
-- Added combos
-- Bug fix: Reset level to original value provided by slider
-
-Future work:
-- Texturing?
-- Make cubes EXPLODE when cleared, making add a special animation for dropping cubes as well
-*/
+ * Progress:
+ * - Loaded vertices only in once
+ * - Implemented game over state when cube reaches the top and some bugs regarding that
+ * - Added a lot of buttons for starting, pausing, resetting, and ending the game
+ * - Added slider to customize grid size
+ * - Added slider to choose starting level
+ * - Made sure sliders can't be set during gameplay, and certain buttons are activated at certain time
+ * - Implemented hard drops with space
+ * - Implemented gravity so that block falls automatically, made sure this is deactivated when the game isn't active
+ * - Each level has a different falling speed
+ * - Level is proportional to score
+ * - Display messages for game over, victory, game end, and block clears from singles to tetrises
+ * - Fixed the freezing issues and lag by reloading buffer only for new Tetrominos
+ * - Fixed the discontinuity with rotating the camera eye
+ * - Added light source directly over the playing field
+ * - Bug fix: Reset gravity clock every time you drop a piece
+ * - Added ghost pieces
+ * - Added combos
+ * - Bug fix: Reset level to original value provided by slider
+ * 
+ * Future work:
+ * - Texturing?
+ * - Make cubes EXPLODE when cleared, making add a special animation for dropping cubes as well
+ */
 
 "use strict"
 
