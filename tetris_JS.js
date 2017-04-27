@@ -872,6 +872,7 @@ function Tetromino() {
             cubie.translationMatrix = mult(translate(0,grid_Yp,0), cubie.translationMatrix);
             cubie.currPosition = mult(translate(0,grid_Yp,0), cubie.currPosition);
         });
+        console.log("BAG1", this.bagOfPieces)
         // Remove tetracube from bag of pieces
         var indexOfThisPiece = this.bagOfPieces.indexOf(type); // find index of piece in bag
         // Check if piece exists in the bag (should exist, so this check shouldn't be necessary)
@@ -882,6 +883,7 @@ function Tetromino() {
         if (this.bagOfPieces.length == 0) {
             this.refillBag();
         }
+        console.log("BAG2", this.bagOfPieces)
     }
 
     // Spawn a new Tetromino piece by choosing one pseudorandomly from the bag of pieces
