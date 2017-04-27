@@ -234,7 +234,13 @@ var isGamePaused = false;
 // Game score
 var gameScore = 0;
 
-// Game level, affects Tetromino fall interval
+// Keep track of combo chain
+var comboCounter = 0;
+
+// Starting game level, taken from the slider
+var startingGameLevel = 1;
+
+// Current game level in game, affects Tetromino fall interval
 var gameLevel = 1;
 
 // Possible fall intervals based on level
@@ -256,11 +262,15 @@ var fallIntervals = [
 var fallInterval = fallIntervals[0];
 
 // Score increase needed to jump to next level
-var levelJumpScore = 1000;
+var levelJumpScore = 3000;
 
 // Make sure you call the following functions after the DOM object is generated in window.onload
 var updateScoreboard = function() {
     document.getElementById("scoreboard").innerHTML = "Score: " + gameScore.toString();
+}
+
+var updateComboCounter = function() {
+    document.getElementById("comboCounter").innerHTML = "Combo Counter: " + comboCounter.toString();
 }
 
 var updateGameLevel = function() {
@@ -675,10 +685,20 @@ function Locked() {
         }
 
         // Update score and scoreboard
+        // With each successive line clear, increment combo counter
+        // If a combo is broken, reset combo counter
         if (linesCleared) {
-            gameScore += 1000*Math.pow(2,linesCleared-1);
+            comboCounter++;
+            // For multiple line clear, score increment is 1000*2^(lines-1)
+            // - 1000 for single and 8000 for Tetris
+            // For combo clear, score increment is 1000*(combo_count-1)
+            // - 0 for single, an additional 1000 point bonus for each successive clear
+            gameScore += 1000*(Math.pow(2,linesCleared-1)+(comboCounter-1));
+        } else {
+            comboCounter = 0;
         }
         updateScoreboard();
+        updateComboCounter();
 
         // Check if level increased (after every score increase)
         var newGameLevel = Math.floor(gameScore / levelJumpScore) + 1;
@@ -700,8 +720,8 @@ function Locked() {
                 document.getElementById('gridSizeSlider').disabled = false;
                 document.getElementById('levelSlider').disabled = false;
                 // Reset level and speed
-                gameLevel = 1;
-                fallInterval = fallIntervals[1];
+                gameLevel = startingGameLevel;
+                fallInterval = fallIntervals[gameLevel];
                 return;
             }
             // Otherwise update the fall interval and keep going
@@ -1413,7 +1433,11 @@ function initEventListeners() {
         // Reset score
         gameScore = 0;
         updateScoreboard();
+        // Reset combo couter
+        comboCounter = 0;
+        updateComboCounter();
         // Set level display
+        gameLevel = startingGameLevel;
         updateGameLevel();
         // Clear game message
         resetGameMessage();
@@ -1465,6 +1489,9 @@ function initEventListeners() {
         isGamePaused = false;
         gameScore = 0;
         updateScoreboard();
+        comboCounter = 0;
+        updateComboCounter();
+        gameLevel = startingGameLevel;
         updateGameLevel();
         resetGameMessage();
         gridBottom.clear();
@@ -1537,7 +1564,8 @@ function initEventListeners() {
     };
 
     document.getElementById("levelSlider").onchange = function(e) {
-        gameLevel = parseInt(e.target.value);
+        startingGameLevel = parseInt(e.target.value);
+        gameLevel = startingGameLevel;
         fallInterval = fallIntervals[gameLevel];
     };
 }
@@ -1626,6 +1654,9 @@ window.onload = function init()
 
     // Initialize the scoreboard to 0
     updateScoreboard();
+
+    // Initialize the combo counter ot 0
+    updateComboCounter();
 
     // Initialize the game level to 0
     updateGameLevel();

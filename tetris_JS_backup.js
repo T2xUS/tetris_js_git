@@ -231,7 +231,10 @@ var isGamePaused = false;
 // Game score
 var gameScore = 0;
 
-// Game level, affects Tetromino fall interval
+// Starting game level, taken from the slider
+var startingGameLevel = 1;
+
+// Current game level in game, affects Tetromino fall interval
 var gameLevel = 1;
 
 // Possible fall intervals based on level
@@ -719,8 +722,8 @@ function Locked() {
                 document.getElementById('gridSizeSlider').disabled = false;
                 document.getElementById('levelSlider').disabled = false;
                 // Reset level and speed
-                gameLevel = 1;
-                fallInterval = fallIntervals[1];
+                gameLevel = startingGameLevel;
+                fallInterval = fallIntervals[gameLevel];
                 return;
             }
             // Otherwise update the fall interval and keep going
@@ -1397,6 +1400,7 @@ function initEventListeners() {
         gameScore = 0;
         updateScoreboard();
         // Set level display
+        gameLevel = startingGameLevel;
         updateGameLevel();
         // Clear game message
         resetGameMessage();
@@ -1446,6 +1450,7 @@ function initEventListeners() {
         isGamePaused = false;
         gameScore = 0;
         updateScoreboard();
+        gameLevel = startingGameLevel;
         updateGameLevel();
         resetGameMessage();
         gridBottom.clear();
@@ -1517,7 +1522,8 @@ function initEventListeners() {
     };
 
     document.getElementById("levelSlider").onchange = function(e) {
-        gameLevel = parseInt(e.target.value);
+        startingGameLevel = parseInt(e.target.value);
+        gameLevel = startingGameLevel;
         fallInterval = fallIntervals[gameLevel];
     };
 }
