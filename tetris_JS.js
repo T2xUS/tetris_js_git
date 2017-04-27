@@ -16,6 +16,8 @@ Progress:
 - Added light source directly over the playing field
 - Bug fix: Reset gravity clock every time you drop a piece
 - Added ghost pieces
+- Added combos
+- Bug fix: Reset level to original value provided by slider
 
 Future work:
 - Texturing?
