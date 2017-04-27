@@ -15,10 +15,10 @@ Progress:
 - Fixed the discontinuity with rotating the camera eye
 - Added light source directly over the playing field
 - Bug fix: Reset gravity clock every time you drop a piece
+- Added ghost pieces
 
 Future work:
-- Lower grid opacity?
-- Texturing
+- Texturing?
 - Make cubes EXPLODE when cleared, making add a special animation for dropping cubes as well
 */
 
@@ -57,6 +57,9 @@ var colorTable = {
 // Number of vertices in cubie to draw in drawArray function
 var NumVertices = 36;
 
+// Number of vertices in cubie outline to draw in drawArray function
+var NumOutlineVertices = 24;
+
 // Absolute value of each coordinate of each vertex for template cubie
 var vertexPos = 0.5;
 
@@ -67,26 +70,27 @@ var sidelen = 2*vertexPos;
 var spacing = 1.1;
 
 // Vertex array used for rendering
-// 0-36 is cubie
+// 0-36 is Tetromino cubie
 // 36-60 is cubie outline
 // 60-78 is grid square
+// 78-114 is locked cubie
+// 114-138 is ghost cubie (only outlines)
 var points = [];
 
 // Color array
-// 36-78 are a fixed color
-// Only need to reload 36-60 every time you render
+// 36-114 are constant colors
+// Only need to reload 0-36 and 114-138 every time you render
 var colors = new Array(114);
 
+// Load the constant colors
 // Store line colors in color array
 for (var i = 36; i < 60; ++i) {
     colors[i] = colorTable['black'];    
 }
-
 // Store grid colors in color array
 for (var i = 60; i < 78; ++i) {
     colors[i] = colorTable['white'];   
 }
-
 // Store locked cubie colors
 for (var i = 78; i < 114; ++i) {
     colors[i] = colorTable['gray'];
@@ -271,6 +275,9 @@ var resetGameMessage = function() {
     document.getElementById("gameMessage").innerHTML = '';
 }
 
+// Ghost piece enable flag
+var isGhostEnabled = false;
+
 // ---------------------------------
 // General purpose helper functions
 // ---------------------------------
@@ -361,8 +368,8 @@ function quadOutline(a, b, c, d, v)
     }
 }
 
-// Function that generates a cubie (and outlines) using quad
-function cubelet(v)
+// Function that generates a cubie using quad
+function cubie(v)
 {
     quad( 2, 3, 7, 6, v); // right face
     quad( 5, 4, 0, 1, v); // left face
@@ -370,7 +377,11 @@ function cubelet(v)
     quad( 3, 0, 4, 7, v); // bottom face
     quad( 1, 0, 3, 2, v); // front face
     quad( 4, 5, 6, 7, v); // back face
+}
 
+// Function that generates a cubie outline using quadOutline
+function cubieOutline(v)
+{
     // right face
     quadOutline( 2, 3, 6, 7, v+0.01);
     quadOutline( 2, 6, 3, 7, v+0.01);
@@ -419,14 +430,6 @@ function GridSquare(x, y, z) {
 
     // Places grid square where it should be in the grid
     this.placementMatrix = translate(x*spacing, y*spacing, z*spacing);
-
-    /*
-    // Grid color, white for now
-    this.colors = [];
-    for (var i = 0; i < 78; i++) {
-        this.colors.push(colorTable['white']);   
-    }
-    */
 
     // World matrix is just the placement matrix, don't need to do anything else with grid
     this.getWorldMatrix = function() {
@@ -529,22 +532,6 @@ function Cubie(x, y, z) {//, color) {
     // Current angle of rotation, initialized at 0
     this.theta = [0,0,0];
 
-    // Cubie's colors based on Tetromino type
-    /*
-    this.colors = [];
-    for (var i = 0; i < NumVertices; i++) {
-        this.colors.push(colorTable[color]);    
-    }
-    */
-
-    // Cubie's outline colors
-    /*
-    this.lineColors = [];
-    for (var i = 0; i < 60; i++) {
-        this.lineColors.push(colorTable['black']);    
-    }
-    */
-
     this.getWorldMatrix = function() {
         var worldMatrix = mat4();
         worldMatrix = mult(this.placementMatrix, worldMatrix);
@@ -568,11 +555,6 @@ function Locked() {
     // Need to add extra one because to consider what happens if the top row shifts down
     // (if top row shifts down, need to replace it with an empty array)
     this.cubies = [];
-
-    this.colors = [];
-    for (var i = 0; i < NumVertices; ++i) {
-        this.colors.push(colorTable['gray']);   
-    }
 
     // Initialize potential row for locked cubies based on grid size
     // Also initialize height again (in case the grid size changes)
@@ -787,83 +769,80 @@ var lockedCubies = new Locked();
 // Tetromino class
 // -------------------------
 
+var tetrominoTable = ['I','O','T','Tvar','J','S','Svar'];
+
 function Tetromino() {
 
+    // Cubies of actual piece
     this.cubies = [];
 
-    // Clear current Tetromino
+    // Cubies for ghost piece aka shadow of the piece to determine where it will land
+    this.ghostCubies = [];
+
+    // Clear current Tetromino and its ghost
     this.clear = function() {
         this.cubies = [];
+        this.ghostCubies = [];
     }
 
     // Color for this Tetromino
     this.color = '';
 
-    // Previous piece, initialized to nothing
-    this.previousPiece = '';
+    // Used to help randomly select a tetracube to spawn
+    // Bag initially contains all 7 pieces
+    // When the bag is empty, refill it with all the pieces again
+    // This ensures that the same piece is not spawned until after all 7 different tetracubes are spawned
+    this.bagOfPieces = tetrominoTable.slice();
+
+    // Fill bag of pieces
+    this.refillBag = function() {
+        this.bagOfPieces = tetrominoTable.slice();
+    }
 
     // Initialize Tetromino based on type
     this.init = function(type) {
         if (type == 'I') {
             this.color = 'cyan';
-            this.cubies.push(new Cubie(-2,0,0));//,'cyan'));
-            this.cubies.push(new Cubie(-1,0,0));//,'cyan'));
-            this.cubies.push(new Cubie(-0,0,0));//,'cyan'));
-            this.cubies.push(new Cubie(1,0,0));//,'cyan'));
+            this.cubies.push(new Cubie(-2,0,0));
+            this.cubies.push(new Cubie(-1,0,0));
+            this.cubies.push(new Cubie(-0,0,0));
+            this.cubies.push(new Cubie(1,0,0));
         } else if (type == 'O') {
             this.color = 'yellow';
-            this.cubies.push(new Cubie(-1,0,0));//,'yellow'));
-            this.cubies.push(new Cubie(0,0,0));//,'yellow'));
-            this.cubies.push(new Cubie(-1,-1,0));//,'yellow'));
-            this.cubies.push(new Cubie(0,-1,0));//,'yellow'));
+            this.cubies.push(new Cubie(-1,0,0));
+            this.cubies.push(new Cubie(0,0,0));
+            this.cubies.push(new Cubie(-1,-1,0));
+            this.cubies.push(new Cubie(0,-1,0));
         } else if (type == 'T') {
             this.color = 'magenta';
-            this.cubies.push(new Cubie(-1,0,0));//,'magenta'));
-            this.cubies.push(new Cubie(0,0,0));//,'magenta'));
-            this.cubies.push(new Cubie(1,0,0));//,'magenta'));
-            this.cubies.push(new Cubie(0,-1,0));//,'magenta'));
+            this.cubies.push(new Cubie(-1,0,0));
+            this.cubies.push(new Cubie(0,0,0));
+            this.cubies.push(new Cubie(1,0,0));
+            this.cubies.push(new Cubie(0,-1,0));
+        } else if (type == 'Tvar') {
+            this.color = 'orange';
+            this.cubies.push(new Cubie(0,0,0));
+            this.cubies.push(new Cubie(0,-1,0));
+            this.cubies.push(new Cubie(0,-1,1));
+            this.cubies.push(new Cubie(1,-1,0));
         } else if (type == 'J') {
             this.color = 'blue';
-            this.cubies.push(new Cubie(-1,0,0));//,'blue'));
-            this.cubies.push(new Cubie(0,0,0));//,'blue'));
-            this.cubies.push(new Cubie(1,0,0));//,'blue'));
-            this.cubies.push(new Cubie(1,-1,0));//,'blue'));
-        } else if (type == 'L') {
-            this.color = 'orange';
-            this.cubies.push(new Cubie(-1,0,0));//,'orange'));
-            this.cubies.push(new Cubie(0,0,0));//,'orange'));
-            this.cubies.push(new Cubie(1,0,0));//,'orange'));
-            this.cubies.push(new Cubie(-1,-1,0));//,'orange'));
+            this.cubies.push(new Cubie(-1,0,0));
+            this.cubies.push(new Cubie(0,0,0));
+            this.cubies.push(new Cubie(1,0,0));
+            this.cubies.push(new Cubie(1,-1,0));
         } else if (type == 'S') {
             this.color = 'green';
-            this.cubies.push(new Cubie(0,0,0));//,'green'));
-            this.cubies.push(new Cubie(1,0,0));//,'green'));
-            this.cubies.push(new Cubie(-1,-1,0));//,'green'));
-            this.cubies.push(new Cubie(0,-1,0));//,'green'));
-        } else if (type == 'Z') {
-            this.color = 'red';
-            this.cubies.push(new Cubie(-1,0,0));//,'red'));
-            this.cubies.push(new Cubie(0,0,0));//,'red'));
-            this.cubies.push(new Cubie(0,-1,0));//,'red'));
-            this.cubies.push(new Cubie(1,-1,0));//,'red'));
-        } else if (type == 'Tvar') {
-            this.color = 'purple';
-            this.cubies.push(new Cubie(0,0,0));//,'purple'));
-            this.cubies.push(new Cubie(0,-1,0));//,'purple'));
-            this.cubies.push(new Cubie(0,-1,1));//,'purple'));
-            this.cubies.push(new Cubie(1,-1,0));//,'purple'));
+            this.cubies.push(new Cubie(0,0,0));
+            this.cubies.push(new Cubie(1,0,0));
+            this.cubies.push(new Cubie(-1,-1,0));
+            this.cubies.push(new Cubie(0,-1,0));
         } else if (type == 'Svar') {
-            this.color = 'olive';
-            this.cubies.push(new Cubie(0,0,0));//,'olive'));
-            this.cubies.push(new Cubie(1,0,0));//,'olive'));
-            this.cubies.push(new Cubie(0,-1,1));//,'olive'));
-            this.cubies.push(new Cubie(0,-1,0));//,'olive'));
-        } else if (type == 'Zvar') {
-            this.color = 'pink';
-            this.cubies.push(new Cubie(-1,0,0));//,'pink'));
-            this.cubies.push(new Cubie(0,0,0));//,'pink'));
-            this.cubies.push(new Cubie(0,-1,0));//,'pink'));
-            this.cubies.push(new Cubie(0,-1,1));//,'pink'));
+            this.color = 'red';
+            this.cubies.push(new Cubie(0,0,0));
+            this.cubies.push(new Cubie(1,0,0));
+            this.cubies.push(new Cubie(0,-1,1));
+            this.cubies.push(new Cubie(0,-1,0));
         }
         // Place Tetromino at the top
         this.cubies.forEach(function(cubie) {
@@ -871,15 +850,60 @@ function Tetromino() {
             cubie.translationMatrix = mult(translate(0,grid_Yp,0), cubie.translationMatrix);
             cubie.currPosition = mult(translate(0,grid_Yp,0), cubie.currPosition);
         });
-        // Bookmark the previous piece
-        this.previousPiece = type;
+        // Remove tetracube from bag of pieces
+        var indexOfThisPiece = this.bagOfPieces.indexOf(type); // find index of piece in bag
+        // Check if piece exists in the bag (should exist, so this check shouldn't be necessary)
+        if (indexOfThisPiece != -1) {
+            this.bagOfPieces.splice(indexOfThisPiece, 1);
+        }
+        // At this point, if the bag is empty, refill
+        if (this.bagOfPieces.length == 0) {
+            this.refillBag();
+        }
+    }
+
+    // Spawn a new Tetromino piece by choosing one pseudorandomly from the bag of pieces
+    this.spawn = function() {
+
+        // Clear previous tetracube and initialize new one
+        this.clear();
+        if (!DEMO) {
+            this.init(this.bagOfPieces[Math.floor(Math.random()*this.bagOfPieces.length)]);
+        } else { // SPAM I BLOCKS FOR DEMO
+            this.init("I");
+        }
+
+        // Reload color buffer for new Tetromino
+
+        // Want to only change the first 36 colors for the Tetromino
+        // and also the last 24 colors for the corresponding ghost
+        for (var i = 0; i < 36; ++i) {
+            colors[i] = colorTable[currTetromino.color];
+        }
+        for (var i = 114; i < 138; ++i) {
+            colors[i] = colorTable[currTetromino.color];
+        }
+
+        var cBuffer = gl.createBuffer();
+        gl.bindBuffer( gl.ARRAY_BUFFER, cBuffer );
+        gl.bufferData( gl.ARRAY_BUFFER, flatten(colors), gl.STATIC_DRAW );
+
+        var vColor = gl.getAttribLocation( program, "vColor" );
+        gl.vertexAttribPointer( vColor, 4, gl.FLOAT, false, 0, 0 );
+        gl.enableVertexAttribArray( vColor );
+
+        // Generate the ghost piece
+        this.updateGhost();
     }
 
     // Check if translation will result in out of bounds condition
-    this.canTranslate = function(direction) {
+    // Make cubies as a parameter so you can choose which set of cubies to pass in (regular or ghost)
+    // Optional parameter isGhost checks to see if the cubies being passed in are ghost cubies
+    // If not a ghost piece, the piece will lock to the grid if there is a downwards collision
+    this.canTranslate = function(cubies, direction, isGhost=false) {
         var bool = true;
         if (direction == 'left') {
-            this.cubies.forEach(function(cubie) {
+            cubies.forEach(function(cubie) {
                 if (cubie.currPosition[xAxis] == grid_Xn || lockedCubies.isCollision('left',cubie)) {
                     // Careful, returning a value here doesn't return in the main function scope
                     bool = false;
@@ -887,7 +911,7 @@ function Tetromino() {
                 }
             });
         } else if (direction == 'right') {
-            this.cubies.forEach(function(cubie) {
+            cubies.forEach(function(cubie) {
                 if (cubie.currPosition[xAxis] == grid_Xp || lockedCubies.isCollision('right',cubie)) {
                     bool = false;
                     return;
@@ -897,27 +921,27 @@ function Tetromino() {
 
         // Special case, need to lock piece in place if there is collision
         else if (direction == 'down') {
-            this.cubies.forEach(function(cubie) {
+            cubies.forEach(function(cubie) {
                 if (cubie.currPosition[yAxis] == grid_Yn || lockedCubies.isCollision('down',cubie)) {
                     bool = false;
                     return;
                 }
             });
             // If collision here, lock the Tetrimino down
-            if (!bool) {
+            if (!bool && !isGhost) {
                 this.lock();
             }
         }
 
         else if (direction == 'front') {
-            this.cubies.forEach(function(cubie) {
+            cubies.forEach(function(cubie) {
                 if (cubie.currPosition[zAxis] == grid_Zp || lockedCubies.isCollision('front',cubie)) {
                     bool = false;
                     return;
                 }
             });
         } else if (direction == 'back') {
-            this.cubies.forEach(function(cubie) {
+            cubies.forEach(function(cubie) {
                 if (cubie.currPosition[zAxis] == grid_Zn || lockedCubies.isCollision('back',cubie)) {
                     bool = false;
                     return;
@@ -929,7 +953,7 @@ function Tetromino() {
 
     // Modify the translation matrix for the vertex shader and also change the currnet position
     this.translate = function(direction) {
-        if (this.canTranslate(direction)) {
+        if (this.canTranslate(this.cubies,direction)) {
             this.cubies.forEach(function(cubie) {
                 if (direction == 'left') {
                     // Remember to add spacing or it won't look right
@@ -952,17 +976,16 @@ function Tetromino() {
                 cubie.currPosition = mult(cubie.rotationMatrix, cubie.origPosition);
                 cubie.currPosition = mult(cubie.translationMatrix, cubie.currPosition);
             });
+            // Update the ghost piece
+            this.updateGhost();
         }
     }
 
     // Hard drop the Tetromino
     this.drop = function() {
-        // Keep track of how many units it can move down
-        var unitsDown = 0;
         // Keep moving down until it can't anymore
         // Lock is inherent in canTranslate
-        while (this.canTranslate('down')) {
-            unitsDown++;
+        while (this.canTranslate(this.cubies,'down')) {
             this.cubies.forEach(function(cubie) {
                 cubie.translationMatrixSpaced = mult(translate(0,-1*spacing,0), cubie.translationMatrixSpaced);
                 cubie.translationMatrix = mult(translate(0,-1,0), cubie.translationMatrix);
@@ -1115,6 +1138,8 @@ function Tetromino() {
         });
         // Round the position after updating them, just in case
         this.roundPosition();
+        // Update ghost piece
+        this.updateGhost();
     }
 
     // Lock Tetrimino in place
@@ -1124,8 +1149,7 @@ function Tetromino() {
             var x = cubie.currPosition[0];
             var y = cubie.currPosition[1];
             var z = cubie.currPosition[2];
-            lockedCubies.push(new Cubie(x,y,z,'gray'));
-
+            lockedCubies.push(new Cubie(x,y,z));
         });
         // Check if rows need to be cleared
         lockedCubies.clearRows();
@@ -1135,7 +1159,7 @@ function Tetromino() {
             return;
         }
         // Spawn a new Tetromino
-        spawnTetromino();
+        currTetromino.spawn();
         // Stop falling after drop to reset drop interval
         //currTetromino.stopFalling();
         //currTetromino.startFalling(fallInterval);
@@ -1171,45 +1195,34 @@ function Tetromino() {
     this.stopFalling = function() {
         clearInterval(this.interval);
     }
-}
 
-var tetrominoTable = ['I','O','T','J','L','S','Z','Tvar','Svar','Zvar'];
+    // Produce the ghost piece according to the position of the active piece
+    this.updateGhost = function() {
+        // Populate ghostCubies with the original positions
+        var this_tmp = this;
+        this.ghostCubies = [];
+        this.cubies.forEach(function(cubie) {
+            var x = cubie.currPosition[0];
+            var y = cubie.currPosition[1];
+            var z = cubie.currPosition[2];
+            this_tmp.ghostCubies.push(new Cubie(x,y,z));
+        });
+        // Move ghost piece down to until it collides, that's where it will be rendered
+        while (this.canTranslate(this.ghostCubies,'down',true)) {
+            this.ghostCubies.forEach(function(ghostCubie) {
+                ghostCubie.translationMatrixSpaced = mult(translate(0,-1*spacing,0), ghostCubie.translationMatrixSpaced);
+                ghostCubie.translationMatrix = mult(translate(0,-1,0), ghostCubie.translationMatrix);
+                ghostCubie.currPosition = mult(ghostCubie.rotationMatrix, ghostCubie.origPosition);
+                ghostCubie.currPosition = mult(ghostCubie.translationMatrix, ghostCubie.currPosition);
+            });
+        }
+    }
+}
 
 // Current Tetromino piece
 // Initialize to placeholder but not actually rendered
 var currTetromino = new Tetromino();
 
-// Spawn a new Tetromino piece
-// Ensures that no same piece can be spawned consecutively
-var spawnTetromino = function() {
-    var indexOfPreviousPiece = tetrominoTable.indexOf(currTetromino.previousPiece);
-    var currTetrominoTable = tetrominoTable.slice();
-    // Check if there was a previous piece (i.e. if start of game)
-    // If so, remove it from list
-    if (indexOfPreviousPiece != -1) {
-        currTetrominoTable.splice(indexOfPreviousPiece,1);
-    }
-    currTetromino.clear();
-    if (!DEMO) {
-    currTetromino.init(currTetrominoTable[Math.floor(Math.random()*currTetrominoTable.length)]);
-    } else { // SPAM I BLOCKS FOR DEMO
-    currTetromino.init("I");
-    }
-
-    // Reload color buffer for new Tetromino
-    // Want to only change the first 36 colors for this Tetromino
-    for (var i = 0; i < NumVertices; ++i) {
-        colors[i] = colorTable[currTetromino.color];
-    }
-
-    var cBuffer = gl.createBuffer();
-    gl.bindBuffer( gl.ARRAY_BUFFER, cBuffer );
-    gl.bufferData( gl.ARRAY_BUFFER, flatten(colors), gl.STATIC_DRAW );
-
-    var vColor = gl.getAttribLocation( program, "vColor" );
-    gl.vertexAttribPointer( vColor, 4, gl.FLOAT, false, 0, 0 );
-    gl.enableVertexAttribArray( vColor );
-}
 
 // -------------------------
 // Action queue functions
@@ -1311,6 +1324,11 @@ function initEventListeners() {
 
             case 32: // space bar, hard drop
                 enqueueAction('translation','drop');
+                e.preventDefault();
+                break;
+
+            case 71: // G, enable/disable ghost piece display
+                isGhostEnabled = !isGhostEnabled;
                 e.preventDefault();
                 break;
         }
@@ -1416,8 +1434,10 @@ function initEventListeners() {
         gridBackWall.init();
         // Clear and resize grid
         lockedCubies.init();
+        // Refill bag
+        currTetromino.refillBag();
         // Spawn new Tetrimino
-        spawnTetromino();
+        currTetromino.spawn();
         // Tell Tetrimino to start falling
         currTetromino.startFalling(fallInterval);
     }
@@ -1454,7 +1474,8 @@ function initEventListeners() {
         gridLeftWall.init();
         gridBackWall.init();
         lockedCubies.init();
-        spawnTetromino();
+        currTetromino.refillBag();
+        currTetromino.spawn();
         // Finally restart falling
         currTetromino.startFalling(fallInterval);
     }
@@ -1536,7 +1557,8 @@ window.onload = function init()
     gl.viewport( 0, 0, canvas.width, canvas.height );
     //gl.clearColor( 1.0, 1.0, 1.0, 1.0 ); //white
     //gl.clearColor( 1.0, 0.5, 0.6, 0.75 ); //pink
-    gl.clearColor( 0.0, 0.0, 0.0, 1.0 ); //black
+    //gl.clearColor( 0.0, 0.0, 0.0, 1.0 ); //black
+    gl.clearColor( 0.0, 0.0, 0.0, 0.7 ); //gray
 
     gl.enable(gl.DEPTH_TEST);
 
@@ -1549,11 +1571,14 @@ window.onload = function init()
     // 36-60 is cubie outline
     // 60-78 is grid square
     // 78-114 is locked cubie
-    cubelet(vertexPos);
+    // 114-138 is ghost cubie (only outlines)
+    cubie(vertexPos);
+    cubieOutline(vertexPos);
     GridQuad( 3, 0, 4, 7, vertexPos); // bottom
     GridQuad( 5, 4, 0, 1, vertexPos); // left
     GridQuad( 4, 5, 6, 7, vertexPos); // back
-    cubelet(vertexPos);
+    cubie(vertexPos);
+    cubieOutline(vertexPos);
 
     // Load the normal buffers
     var nBuffer = gl.createBuffer();
@@ -1741,6 +1766,9 @@ function render()
         // Vertices 0-36 is Tetromino cubie, color is reloaded when spawning Tetromino
         gl.drawArrays(gl.TRIANGLES, 0, NumVertices);
 
+        // Vertices 36-60 is cubie outline, color is black
+        gl.drawArrays(gl.LINES, 36, NumOutlineVertices);
+
         worldViewMatrix = mat4();
     });
 
@@ -1760,41 +1788,30 @@ function render()
             // Vertices 78-114 is locked cubie, color is gray
             gl.drawArrays(gl.TRIANGLES, 78, NumVertices);
 
+            // Vertices 36-60 is cubie outline, color is black
+            gl.drawArrays(gl.LINES, 36, NumOutlineVertices);
+
             worldViewMatrix = mat4();
         });
     });
 
-    // ----------------------------------------
-    // Render the cubie outlines
-    // ----------------------------------------
+    // -------------------------------------------------------------
+    // Render the current piece's ghost only if setting is enabled
+    // -------------------------------------------------------------
 
-    // Render the outlines for the Tetromino
-    currTetromino.cubies.forEach(function(cubie) {
+    if (isGhostEnabled) {
 
-        worldViewMatrix = mult(cubie.getWorldMatrix(), worldViewMatrix);
-        gl.uniformMatrix4fv(worldViewMatrixLoc, false, flatten(worldViewMatrix));
+        currTetromino.ghostCubies.forEach(function(ghostCubie) {
 
-        // Draw lines instead of triangles
-        // Vertices 36-60 is cubie outline, color is black
-        gl.drawArrays(gl.LINES, 36, 24);
-
-        worldViewMatrix = mat4();
-    });
-
-
-    lockedCubies.cubies.forEach(function(row) {
-
-        row.forEach(function(cubie) {
-
-            worldViewMatrix = mult(cubie.getWorldMatrix(), worldViewMatrix);
+            worldViewMatrix = mult(ghostCubie.getWorldMatrix(), worldViewMatrix);
             gl.uniformMatrix4fv(worldViewMatrixLoc, false, flatten(worldViewMatrix));
 
-            // Vertices 36-60 is cubie outline, color is black
-            gl.drawArrays(gl.LINES, 36, 24);
+            // Vertices 114-138 is ghost cubie outlines
+            gl.drawArrays(gl.LINES, 114, NumOutlineVertices);
 
             worldViewMatrix = mat4();
         });
-    });
+    }
 
     requestAnimFrame( render );
 }
